@@ -113,11 +113,10 @@ async fn run_meshtastic(tx: mpsc::Sender<NodeInfo>) -> Result<(), Box<dyn std::e
     let _stream_api = stream_api.configure(config_id).await?;
 
     while let Some(decoded) = decoded_listener.recv().await {
-        if let Some(PayloadVariant::NodeInfo(node_info)) = decoded.payload_variant {
-            if tx.send(node_info).await.is_err() {
+        if let Some(PayloadVariant::NodeInfo(node_info)) = decoded.payload_variant
+            && tx.send(node_info).await.is_err() {
                 break;
             }
-        }
     }
 
     Ok(())
@@ -184,8 +183,8 @@ impl App {
             }
 
             let timeout = tick_rate.saturating_sub(last_tick.elapsed());
-            if event::poll(timeout)? {
-                if let Event::Key(key) = event::read()? {
+            if event::poll(timeout)?
+                && let Event::Key(key) = event::read()? {
                     if self.state == AppState::Loading {
                         if let KeyCode::Char('q') = key.code {
                             return Ok(());
@@ -277,7 +276,6 @@ impl App {
                         }
                     }
                 }
-            }
             if last_tick.elapsed() >= tick_rate {
                 last_tick = Instant::now();
             }
