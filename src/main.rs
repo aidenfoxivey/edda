@@ -9,7 +9,7 @@
 
 use std::collections::HashMap;
 use std::env;
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime};
 
 use color_eyre::Result;
 use meshtastic::api::StreamApi;
@@ -30,6 +30,7 @@ use tokio::sync::mpsc;
 struct Message {
     to: NodeId,
     name: String,
+    ts: SystemTime,
 }
 
 struct App {
