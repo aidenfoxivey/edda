@@ -22,7 +22,7 @@ pub async fn run_meshtastic(tx: mpsc::Sender<NodeInfo>) -> Result<(), Box<dyn st
 
     while let Some(decoded) = decoded_listener.recv().await {
         if let Some(PayloadVariant::NodeInfo(node_info)) = decoded.payload_variant
-            && tx.send(node_info.clone()).await.is_err() {
+            && tx.send(node_info).await.is_err() {
                 break;
             }
     }
