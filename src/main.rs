@@ -24,8 +24,10 @@ use ratatui::{
     },
 };
 use tokio::sync::mpsc;
+use crate::types::MeshEvent;
 
 mod mesh;
+mod types;
 
 #[derive(Debug)]
 struct Message {
@@ -81,11 +83,12 @@ enum Focus {
 
 fn main() -> Result<()> {
     color_eyre::install()?;
+    let (_ui_tx, ui_rx) = mpsc::channel(100);
     let (tx, rx) = mpsc::channel(100);
 
     // Run a seperate thread that listens to the Meshtastic interface.
     std::thread::spawn(move || {
-        if let Err(e) = mesh::run_meshtastic(tx) {
+        if let Err(e) = mesh::run_meshtastic(ui_rx, tx) {
             eprintln!("Meshtastic thread error: {}", e);
         }
     });
@@ -143,14 +146,14 @@ impl App {
     fn run(
         &mut self,
         terminal: &mut DefaultTerminal,
-        mut rx: mpsc::Receiver<NodeInfo>,
+        mut rx: mpsc::Receiver<MeshEvent>,
     ) -> Result<()> {
         let tick_rate = Duration::from_millis(250);
         let mut last_tick = Instant::now();
         loop {
             terminal.draw(|frame| self.draw(frame))?;
 
-            if let Ok(node_info) = rx.try_recv() {
+            if let Ok(MeshEvent::NodeAvailable(node_info)) = rx.try_recv() {
                 let is_empty = self.nodes.is_empty();
                 self.nodes.insert(node_info.num, node_info);
                 if is_empty {
@@ -174,19 +177,11 @@ impl App {
                         }
                         KeyCode::Tab => {
                             self.focus = match self.focus {
-                                None => Some(Focus::NodeList),
                                 Some(Focus::NodeList) => Some(Focus::Conversation),
                                 Some(Focus::Conversation) => Some(Focus::Input),
                                 Some(Focus::Input) => Some(Focus::NodeList),
-                            };
-                        }
-                        KeyCode::BackTab => {
-                            self.focus = match self.focus {
-                                Some(Focus::Input) => Some(Focus::Conversation),
-                                Some(Focus::Conversation) => Some(Focus::NodeList),
-                                Some(Focus::NodeList) => Some(Focus::Input),
                                 None => Some(Focus::NodeList),
-                            }
+                            };
                         }
                         _ => {
                             if let Some(focus) = self.focus {
