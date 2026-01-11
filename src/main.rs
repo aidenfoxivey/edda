@@ -15,6 +15,7 @@ use color_eyre::Result;
 use meshtastic::protobufs::NodeInfo;
 use meshtastic::types::NodeId;
 
+use crate::types::MeshEvent;
 use ratatui::DefaultTerminal;
 use ratatui::{
     crossterm::event::{self, Event, KeyCode},
@@ -24,7 +25,6 @@ use ratatui::{
     },
 };
 use tokio::sync::mpsc;
-use crate::types::MeshEvent;
 
 mod mesh;
 mod types;
@@ -177,10 +177,18 @@ impl App {
                         }
                         KeyCode::Tab => {
                             self.focus = match self.focus {
+                                None => Some(Focus::NodeList),
                                 Some(Focus::NodeList) => Some(Focus::Conversation),
                                 Some(Focus::Conversation) => Some(Focus::Input),
                                 Some(Focus::Input) => Some(Focus::NodeList),
+                            };
+                        }
+                        KeyCode::BackTab => {
+                            self.focus = match self.focus {
                                 None => Some(Focus::NodeList),
+                                Some(Focus::NodeList) => Some(Focus::Input),
+                                Some(Focus::Input) => Some(Focus::Conversation),
+                                Some(Focus::Conversation) => Some(Focus::NodeList),
                             };
                         }
                         _ => {
