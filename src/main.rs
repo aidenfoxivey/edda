@@ -8,14 +8,13 @@
 // - support direct messages
 
 use std::collections::HashMap;
-use std::env;
 use std::time::{Duration, Instant, SystemTime};
 
 use color_eyre::Result;
-use meshtastic::api::StreamApi;
-use meshtastic::protobufs::{NodeInfo, from_radio::PayloadVariant};
+
+use meshtastic::protobufs::{NodeInfo};
 use meshtastic::types::NodeId;
-use meshtastic::utils;
+
 use ratatui::DefaultTerminal;
 use ratatui::{
     crossterm::event::{self, Event, KeyCode},
@@ -25,6 +24,8 @@ use ratatui::{
     },
 };
 use tokio::sync::mpsc;
+
+mod mesh;
 
 #[derive(Debug)]
 struct Message {
@@ -84,7 +85,7 @@ fn main() -> Result<()> {
 
     // Run a seperate thread that listens to the Meshtastic interface.
     std::thread::spawn(move || {
-        if let Err(e) = run_meshtastic(tx) {
+        if let Err(e) = mesh::run_meshtastic(tx) {
             eprintln!("Meshtastic thread error: {}", e);
         }
     });
@@ -96,30 +97,6 @@ fn main() -> Result<()> {
     let app_result = app.run(&mut terminal, rx);
     ratatui::restore();
     app_result
-}
-
-#[tokio::main]
-async fn run_meshtastic(tx: mpsc::Sender<NodeInfo>) -> Result<(), Box<dyn std::error::Error>> {
-    let args: Vec<String> = env::args().collect();
-    assert_eq!(args.len(), 2);
-    let port = args[1].clone();
-
-    let stream_api = StreamApi::new();
-
-    let serial_stream = utils::stream::build_serial_stream(port, None, None, None)?;
-    let (mut decoded_listener, stream_api) = stream_api.connect(serial_stream).await;
-
-    let config_id = utils::generate_rand_id();
-    let _stream_api = stream_api.configure(config_id).await?;
-
-    while let Some(decoded) = decoded_listener.recv().await {
-        if let Some(PayloadVariant::NodeInfo(node_info)) = decoded.payload_variant
-            && tx.send(node_info).await.is_err() {
-                break;
-            }
-    }
-
-    Ok(())
 }
 
 impl App {
