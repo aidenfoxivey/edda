@@ -12,7 +12,7 @@ use std::time::{Duration, Instant, SystemTime};
 
 use color_eyre::Result;
 
-use meshtastic::protobufs::{NodeInfo};
+use meshtastic::protobufs::NodeInfo;
 use meshtastic::types::NodeId;
 
 use ratatui::DefaultTerminal;
