@@ -1,13 +1,16 @@
-/// Handle communication with a Meshtastic device connected over serial.
-
-use tokio::sync::mpsc;
-use std::env;
+use crate::types::{MeshEvent, UiEvent};
 use meshtastic::api::StreamApi;
+use meshtastic::protobufs::from_radio::PayloadVariant;
 use meshtastic::utils;
-use meshtastic::protobufs::{from_radio::PayloadVariant, NodeInfo};
+use std::env;
+/// Handle communication with a Meshtastic device connected over serial.
+use tokio::sync::mpsc;
 
 #[tokio::main]
-pub async fn run_meshtastic(tx: mpsc::Sender<NodeInfo>) -> Result<(), Box<dyn std::error::Error>> {
+pub async fn run_meshtastic(
+    rx: mpsc::Receiver<UiEvent>,
+    tx: mpsc::Sender<MeshEvent>,
+) -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = env::args().collect();
     assert_eq!(args.len(), 2);
     let port = args[1].clone();
@@ -21,10 +24,30 @@ pub async fn run_meshtastic(tx: mpsc::Sender<NodeInfo>) -> Result<(), Box<dyn st
     let _stream_api = stream_api.configure(config_id).await?;
 
     while let Some(decoded) = decoded_listener.recv().await {
-        if let Some(PayloadVariant::NodeInfo(node_info)) = decoded.payload_variant
-            && tx.send(node_info.clone()).await.is_err() {
-                break;
+        if decoded.payload_variant.is_none() {
+            break;
+        }
+
+        match decoded.payload_variant.unwrap() {
+            PayloadVariant::Packet(_) => {}
+            PayloadVariant::MyInfo(_) => {}
+            PayloadVariant::NodeInfo(node_info) => {
+                tx.send(MeshEvent::NodeAvailable(node_info)).await?;
             }
+            PayloadVariant::Config(_) => {}
+            PayloadVariant::LogRecord(_) => {}
+            PayloadVariant::ConfigCompleteId(_) => {}
+            PayloadVariant::Rebooted(_) => {}
+            PayloadVariant::ModuleConfig(_) => {}
+            PayloadVariant::Channel(_) => {}
+            PayloadVariant::QueueStatus(_) => {}
+            PayloadVariant::XmodemPacket(_) => {}
+            PayloadVariant::Metadata(_) => {}
+            PayloadVariant::MqttClientProxyMessage(_) => {}
+            PayloadVariant::FileInfo(_) => {}
+            PayloadVariant::ClientNotification(_) => {}
+            PayloadVariant::DeviceuiConfig(_) => {}
+        }
     }
 
     Ok(())

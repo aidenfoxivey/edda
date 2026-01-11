@@ -12,7 +12,7 @@ use std::time::{Duration, Instant, SystemTime};
 
 use color_eyre::Result;
 
-use meshtastic::protobufs::{NodeInfo};
+use meshtastic::protobufs::NodeInfo;
 use meshtastic::types::NodeId;
 
 use ratatui::DefaultTerminal;
@@ -24,8 +24,10 @@ use ratatui::{
     },
 };
 use tokio::sync::mpsc;
+use crate::types::MeshEvent;
 
 mod mesh;
+mod types;
 
 #[derive(Debug)]
 struct Message {
@@ -81,11 +83,12 @@ enum Focus {
 
 fn main() -> Result<()> {
     color_eyre::install()?;
+    let (_ui_tx, ui_rx) = mpsc::channel(100);
     let (tx, rx) = mpsc::channel(100);
 
     // Run a seperate thread that listens to the Meshtastic interface.
     std::thread::spawn(move || {
-        if let Err(e) = mesh::run_meshtastic(tx) {
+        if let Err(e) = mesh::run_meshtastic(ui_rx, tx) {
             eprintln!("Meshtastic thread error: {}", e);
         }
     });
@@ -143,14 +146,14 @@ impl App {
     fn run(
         &mut self,
         terminal: &mut DefaultTerminal,
-        mut rx: mpsc::Receiver<NodeInfo>,
+        mut rx: mpsc::Receiver<MeshEvent>,
     ) -> Result<()> {
         let tick_rate = Duration::from_millis(250);
         let mut last_tick = Instant::now();
         loop {
             terminal.draw(|frame| self.draw(frame))?;
 
-            if let Ok(node_info) = rx.try_recv() {
+            if let Ok(MeshEvent::NodeAvailable(node_info)) = rx.try_recv() {
                 let is_empty = self.nodes.is_empty();
                 self.nodes.insert(node_info.num, node_info);
                 if is_empty {
@@ -161,98 +164,97 @@ impl App {
 
             let timeout = tick_rate.saturating_sub(last_tick.elapsed());
             if event::poll(timeout)?
-                && let Event::Key(key) = event::read()? {
-                    if self.state == AppState::Loading {
-                        if let KeyCode::Char('q') = key.code {
-                            return Ok(());
+                && let Event::Key(key) = event::read()?
+            {
+                if self.state == AppState::Loading {
+                    if let KeyCode::Char('q') = key.code {
+                        return Ok(());
+                    }
+                } else {
+                    match key.code {
+                        KeyCode::Esc => {
+                            self.focus = None;
                         }
-                    } else {
-                        match key.code {
-                            KeyCode::Esc => {
-                                self.focus = None;
-                            }
-                            KeyCode::Tab => {
-                                self.focus = match self.focus {
-                                    Some(Focus::NodeList) => Some(Focus::Conversation),
-                                    Some(Focus::Conversation) => Some(Focus::Input),
-                                    Some(Focus::Input) => Some(Focus::NodeList),
-                                    None => Some(Focus::NodeList),
-                                };
-                            }
-                            _ => {
-                                if let Some(focus) = self.focus {
-                                    match focus {
-                                        Focus::NodeList => match key.code {
-                                            KeyCode::Char('j') | KeyCode::Down => self.next_node(),
-                                            KeyCode::Char('k') | KeyCode::Up => {
-                                                self.previous_node()
-                                            }
-                                            KeyCode::Enter => {
-                                                if let Some(selected_index) =
-                                                    self.node_list_state.selected()
+                        KeyCode::Tab => {
+                            self.focus = match self.focus {
+                                Some(Focus::NodeList) => Some(Focus::Conversation),
+                                Some(Focus::Conversation) => Some(Focus::Input),
+                                Some(Focus::Input) => Some(Focus::NodeList),
+                                None => Some(Focus::NodeList),
+                            };
+                        }
+                        _ => {
+                            if let Some(focus) = self.focus {
+                                match focus {
+                                    Focus::NodeList => match key.code {
+                                        KeyCode::Char('j') | KeyCode::Down => self.next_node(),
+                                        KeyCode::Char('k') | KeyCode::Up => self.previous_node(),
+                                        KeyCode::Enter => {
+                                            if let Some(selected_index) =
+                                                self.node_list_state.selected()
+                                            {
+                                                let nodes = self.get_sorted_nodes();
+                                                if let Some(selected_node) =
+                                                    nodes.get(selected_index)
                                                 {
-                                                    let nodes = self.get_sorted_nodes();
-                                                    if let Some(selected_node) =
-                                                        nodes.get(selected_index)
-                                                    {
-                                                        self.current_contact =
-                                                            Some((*selected_node).clone());
-                                                    }
+                                                    self.current_contact =
+                                                        Some((*selected_node).clone());
                                                 }
                                             }
-                                            _ => {}
-                                        },
-                                        Focus::Conversation => match key.code {
-                                            KeyCode::Char('j') | KeyCode::Down => {
-                                                self.vertical_scroll =
-                                                    self.vertical_scroll.saturating_add(1);
-                                                self.vertical_scroll_state = self
-                                                    .vertical_scroll_state
-                                                    .position(self.vertical_scroll);
-                                            }
-                                            KeyCode::Char('k') | KeyCode::Up => {
-                                                self.vertical_scroll =
-                                                    self.vertical_scroll.saturating_sub(1);
-                                                self.vertical_scroll_state = self
-                                                    .vertical_scroll_state
-                                                    .position(self.vertical_scroll);
-                                            }
-                                            KeyCode::Char('h') | KeyCode::Left => {
-                                                self.horizontal_scroll =
-                                                    self.horizontal_scroll.saturating_sub(1);
-                                                self.horizontal_scroll_state = self
-                                                    .horizontal_scroll_state
-                                                    .position(self.horizontal_scroll);
-                                            }
-                                            KeyCode::Char('l') | KeyCode::Right => {
-                                                self.horizontal_scroll =
-                                                    self.horizontal_scroll.saturating_add(1);
-                                                self.horizontal_scroll_state = self
-                                                    .horizontal_scroll_state
-                                                    .position(self.horizontal_scroll);
-                                            }
-                                            _ => {}
-                                        },
-                                        Focus::Input => match key.code {
-                                            KeyCode::Char(c) => {
-                                                self.input.push(c);
-                                            }
-                                            KeyCode::Backspace => {
-                                                self.input.pop();
-                                            }
-                                            KeyCode::Enter => {
-                                                self.input.push('\n');
-                                            }
-                                            _ => {}
-                                        },
-                                    }
-                                } else if let KeyCode::Char('q') = key.code {
-                                    return Ok(());
+                                        }
+                                        _ => {}
+                                    },
+                                    Focus::Conversation => match key.code {
+                                        KeyCode::Char('j') | KeyCode::Down => {
+                                            self.vertical_scroll =
+                                                self.vertical_scroll.saturating_add(1);
+                                            self.vertical_scroll_state = self
+                                                .vertical_scroll_state
+                                                .position(self.vertical_scroll);
+                                        }
+                                        KeyCode::Char('k') | KeyCode::Up => {
+                                            self.vertical_scroll =
+                                                self.vertical_scroll.saturating_sub(1);
+                                            self.vertical_scroll_state = self
+                                                .vertical_scroll_state
+                                                .position(self.vertical_scroll);
+                                        }
+                                        KeyCode::Char('h') | KeyCode::Left => {
+                                            self.horizontal_scroll =
+                                                self.horizontal_scroll.saturating_sub(1);
+                                            self.horizontal_scroll_state = self
+                                                .horizontal_scroll_state
+                                                .position(self.horizontal_scroll);
+                                        }
+                                        KeyCode::Char('l') | KeyCode::Right => {
+                                            self.horizontal_scroll =
+                                                self.horizontal_scroll.saturating_add(1);
+                                            self.horizontal_scroll_state = self
+                                                .horizontal_scroll_state
+                                                .position(self.horizontal_scroll);
+                                        }
+                                        _ => {}
+                                    },
+                                    Focus::Input => match key.code {
+                                        KeyCode::Char(c) => {
+                                            self.input.push(c);
+                                        }
+                                        KeyCode::Backspace => {
+                                            self.input.pop();
+                                        }
+                                        KeyCode::Enter => {
+                                            self.input.push('\n');
+                                        }
+                                        _ => {}
+                                    },
                                 }
+                            } else if let KeyCode::Char('q') = key.code {
+                                return Ok(());
                             }
                         }
                     }
                 }
+            }
             if last_tick.elapsed() >= tick_rate {
                 last_tick = Instant::now();
             }
