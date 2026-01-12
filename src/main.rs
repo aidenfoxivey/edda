@@ -48,7 +48,6 @@ struct App {
     pub current_contact: Option<NodeInfo>,
     pub state: AppState,
     pub chats: HashMap<NodeId, Vec<Message>>,
-    // pub current_conversation: Vec<Message>,
 }
 
 impl Default for App {
@@ -145,6 +144,32 @@ impl App {
         self.node_list_state.select(Some(i));
     }
 
+    /// Handle received `MeshEvent`s from the Meshtastic thread.
+    fn handle_received(&mut self, recv: MeshEvent) {
+        match recv {
+            MeshEvent::NodeAvailable(node_info) => {
+                self.nodes.insert(NodeId::from(node_info.num), node_info);
+                if self.nodes.is_empty() {
+                    self.node_list_state.select(Some(0));
+                }
+                self.state = AppState::Loaded;
+            }
+            MeshEvent::Message { node_id, message } => {
+                let msg = Message {
+                    to: node_id,
+                    name: self
+                        .nodes
+                        .get(&node_id)
+                        .and_then(|n| n.user.as_ref())
+                        .map_or("UNK".into(), |u| u.long_name.clone()),
+                    ts: SystemTime::now(),
+                };
+
+                self.chats.entry(node_id).or_default().push(msg);
+            }
+        }
+    }
+
     fn run(
         &mut self,
         terminal: &mut DefaultTerminal,
@@ -155,33 +180,11 @@ impl App {
         loop {
             terminal.draw(|frame| self.draw(frame))?;
 
-            let recv = rx.try_recv();
-            if recv.is_err() {
+            // Every redraw should check first if there is more information to render.
+            if let Ok(recv) = rx.try_recv() {
+                self.handle_received(recv);
+            } else {
                 panic!("recieving data went bad")
-            }
-
-            match recv.unwrap() {
-                MeshEvent::NodeAvailable(node_info) => {
-                    let is_empty = self.nodes.is_empty();
-                    self.nodes.insert(NodeId::from(node_info.num), node_info);
-                    if is_empty {
-                        self.node_list_state.select(Some(0));
-                    }
-                    self.state = AppState::Loaded;
-                }
-                MeshEvent::Message { node_id, message } => {
-                    let msg = Message {
-                        to: node_id,
-                        name: self
-                            .nodes
-                            .get(&node_id)
-                            .and_then(|n| n.user.as_ref())
-                            .map_or("UNK".into(), |u| u.long_name.clone()),
-                        ts: SystemTime::now(),
-                    };
-
-                    self.chats.entry(node_id).or_default().push(msg);
-                }
             }
 
             let timeout = tick_rate.saturating_sub(last_tick.elapsed());
