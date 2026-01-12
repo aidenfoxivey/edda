@@ -184,7 +184,7 @@ impl App {
             if let Ok(recv) = rx.try_recv() {
                 self.handle_received(recv);
             } else {
-                panic!("recieving data went bad")
+                panic!("receiving data went bad")
             }
 
             let timeout = tick_rate.saturating_sub(last_tick.elapsed());
