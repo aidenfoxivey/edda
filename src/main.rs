@@ -15,6 +15,7 @@ use color_eyre::Result;
 use meshtastic::protobufs::NodeInfo;
 use meshtastic::types::NodeId;
 
+use crate::types::MeshEvent;
 use ratatui::DefaultTerminal;
 use ratatui::{
     crossterm::event::{self, Event, KeyCode},
@@ -24,7 +25,6 @@ use ratatui::{
     },
 };
 use tokio::sync::mpsc;
-use crate::types::MeshEvent;
 
 mod mesh;
 mod types;
@@ -41,12 +41,13 @@ struct App {
     pub horizontal_scroll_state: ScrollbarState,
     pub vertical_scroll: usize,
     pub horizontal_scroll: usize,
-    pub nodes: HashMap<u32, NodeInfo>,
+    pub nodes: HashMap<NodeId, NodeInfo>,
     pub input: String,
     pub focus: Option<Focus>,
     pub node_list_state: ListState,
     pub current_contact: Option<NodeInfo>,
     pub state: AppState,
+    pub chats: HashMap<NodeId, Vec<Message>>,
     // pub current_conversation: Vec<Message>,
 }
 
@@ -63,6 +64,7 @@ impl Default for App {
             node_list_state: ListState::default(),
             current_contact: None,
             state: AppState::Loading,
+            chats: HashMap::new(),
         }
     }
 }
@@ -153,13 +155,33 @@ impl App {
         loop {
             terminal.draw(|frame| self.draw(frame))?;
 
-            if let Ok(MeshEvent::NodeAvailable(node_info)) = rx.try_recv() {
-                let is_empty = self.nodes.is_empty();
-                self.nodes.insert(node_info.num, node_info);
-                if is_empty {
-                    self.node_list_state.select(Some(0));
+            let recv = rx.try_recv();
+            if recv.is_err() {
+                panic!("recieving data went bad")
+            }
+
+            match recv.unwrap() {
+                MeshEvent::NodeAvailable(node_info) => {
+                    let is_empty = self.nodes.is_empty();
+                    self.nodes.insert(NodeId::from(node_info.num), node_info);
+                    if is_empty {
+                        self.node_list_state.select(Some(0));
+                    }
+                    self.state = AppState::Loaded;
                 }
-                self.state = AppState::Loaded;
+                MeshEvent::Message { node_id, message } => {
+                    let msg = Message {
+                        to: node_id,
+                        name: self
+                            .nodes
+                            .get(&node_id)
+                            .and_then(|n| n.user.as_ref())
+                            .map_or("UNK".into(), |u| u.long_name.clone()),
+                        ts: SystemTime::now(),
+                    };
+
+                    self.chats.entry(node_id).or_default().push(msg);
+                }
             }
 
             let timeout = tick_rate.saturating_sub(last_tick.elapsed());
@@ -269,11 +291,6 @@ impl App {
 
         let area = frame.area();
 
-        let s =
-            "Veeeeeeeeeeeeeeeery    loooooooooooooooooong   striiiiiiiiiiiiiiiiiiiiiiiiiing.   ";
-        let mut long_line = s.repeat(usize::from(area.width) / s.len() + 4);
-        long_line.push('\n');
-
         let horizontal_chunks =
             Layout::horizontal([Constraint::Percentage(30), Constraint::Percentage(70)])
                 .split(area);
@@ -285,20 +302,35 @@ impl App {
         ])
         .split(horizontal_chunks[1]);
 
-        let text = vec![
-            Line::from("This is a line "),
-            Line::from("This is a line   ".red()),
-            Line::from("This is a line".on_dark_gray()),
-            Line::from("This is a longer line".crossed_out()),
-            Line::from(long_line.clone()),
-            Line::from("This is a line".reset()),
-            Line::from(vec![
-                "Masked text: ".into(),
-                Span::styled(Masked::new("password", '*'), Style::new().fg(Color::Red)),
-            ]),
-        ];
+        let text: Vec<Line> = if let Some(contact) = &self.current_contact {
+            if let Some(conversation) = self.chats.get(&NodeId::from(contact.num)) {
+                conversation
+                    .iter()
+                    .map(|msg| {
+                        let ts = msg
+                            .ts
+                            .duration_since(SystemTime::UNIX_EPOCH)
+                            .map(|d| {
+                                format!(
+                                    "[{:02}:{:02}:{:02}]",
+                                    d.as_secs() / 3600 % 24,
+                                    d.as_secs() / 60 % 60,
+                                    d.as_secs() % 60
+                                )
+                            })
+                            .unwrap_or_default();
+
+                        Line::from(format!("{} {}: {}", ts, msg.name, msg.to))
+                    })
+                    .collect()
+            } else {
+                vec![Line::from("No messages yet.")]
+            }
+        } else {
+            vec![Line::from("No node selected.")]
+        };
+
         self.vertical_scroll_state = self.vertical_scroll_state.content_length(text.len());
-        self.horizontal_scroll_state = self.horizontal_scroll_state.content_length(long_line.len());
 
         let title = Block::new()
             .title_alignment(Alignment::Center)
