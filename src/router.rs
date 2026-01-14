@@ -3,25 +3,27 @@ use meshtastic::packet::PacketRouter;
 use meshtastic::protobufs::from_radio::PayloadVariant;
 use meshtastic::protobufs::{FromRadio, MeshPacket, User};
 use meshtastic::types::NodeId;
+use tokio::sync::mpsc::Sender;
+use crate::types::MeshEvent;
 
 /// A `Router` acts as middleware that can do work whenever a given message is sent or received.
 
-struct Router {
+pub struct Router {
     user: Option<User>,
     node_num: Option<NodeId>,
+    ui_channel: Sender<MeshEvent>,
 }
 
 impl Router {
-    pub fn new() -> Self {
+    pub fn new(ui_channel: Sender<MeshEvent>) -> Self {
         Router {
             user: None,
             node_num: None,
+            ui_channel,
         }
     }
-}
 
-impl PacketRouter<(), Error> for Router {
-    fn handle_packet_from_radio(&mut self, packet: FromRadio) -> Result<(), Error> {
+    pub fn handle_packet_from_radio(&mut self, packet: FromRadio) {
         match packet.payload_variant.as_ref() {
             // TODO(aidenfoxivey): This must be turned into a logger stmt instead.
             None => panic!("Unexpected packet from_radio"),
@@ -43,6 +45,11 @@ impl PacketRouter<(), Error> for Router {
                             log::info!("Receiving current node user information");
                             self.user = info.user.clone();
                         }
+
+
+                        if let Err(e) = self.ui_channel.try_send(MeshEvent::NodeAvailable(info.clone())) {
+                            log::error!("Failed to send NodeAvailable event: {}", e);
+                        }
                     }
                     PayloadVariant::Config(_) => {}
                     PayloadVariant::LogRecord(_) => {}
@@ -61,6 +68,12 @@ impl PacketRouter<(), Error> for Router {
             }
         }
 
+    }
+}
+
+impl PacketRouter<(), Error> for Router {
+    fn handle_packet_from_radio(&mut self, packet: FromRadio) -> Result<(), Error> {
+        self.handle_packet_from_radio(packet);
         Ok(())
     }
 
