@@ -1,4 +1,5 @@
 use crate::types::{MeshEvent, UiEvent};
+use crate::router::Router;
 use meshtastic::api::StreamApi;
 use meshtastic::protobufs::from_radio::PayloadVariant;
 use meshtastic::utils;
@@ -18,36 +19,15 @@ pub async fn run_meshtastic(
     let stream_api = StreamApi::new();
 
     let serial_stream = utils::stream::build_serial_stream(port, None, None, None)?;
-    let (mut decoded_listener, stream_api) = stream_api.connect(serial_stream).await;
+    let (mut pkt_receiver, stream_api) = stream_api.connect(serial_stream).await;
 
     let config_id = utils::generate_rand_id();
     let _stream_api = stream_api.configure(config_id).await?;
 
-    while let Some(decoded) = decoded_listener.recv().await {
-        if decoded.payload_variant.is_none() {
-            break;
-        }
+    let mut router = Router::new(tx);
 
-        match decoded.payload_variant.unwrap() {
-            PayloadVariant::Packet(_) => {}
-            PayloadVariant::MyInfo(_) => {}
-            PayloadVariant::NodeInfo(node_info) => {
-                tx.send(MeshEvent::NodeAvailable(node_info)).await?;
-            }
-            PayloadVariant::Config(_) => {}
-            PayloadVariant::LogRecord(_) => {}
-            PayloadVariant::ConfigCompleteId(_) => {}
-            PayloadVariant::Rebooted(_) => {}
-            PayloadVariant::ModuleConfig(_) => {}
-            PayloadVariant::Channel(_) => {}
-            PayloadVariant::QueueStatus(_) => {}
-            PayloadVariant::XmodemPacket(_) => {}
-            PayloadVariant::Metadata(_) => {}
-            PayloadVariant::MqttClientProxyMessage(_) => {}
-            PayloadVariant::FileInfo(_) => {}
-            PayloadVariant::ClientNotification(_) => {}
-            PayloadVariant::DeviceuiConfig(_) => {}
-        }
+    while let Some(packet) = pkt_receiver.recv().await {
+        router.handle_packet_from_radio(packet);
     }
 
     Ok(())
