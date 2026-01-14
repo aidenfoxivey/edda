@@ -8,10 +8,11 @@
 // - support direct messages
 
 use std::collections::HashMap;
-use std::time::{Duration, Instant, SystemTime};
+use std::fs::OpenOptions;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use color_eyre::Result;
-
+use env_logger::Builder;
 use meshtastic::protobufs::NodeInfo;
 use meshtastic::types::NodeId;
 
@@ -82,8 +83,27 @@ enum Focus {
     Input,
 }
 
+fn setup_logger() {
+    let start = SystemTime::now();
+    let since_the_epoch = start
+        .duration_since(UNIX_EPOCH)
+        .expect("Time went backwards");
+
+    let target = Box::new(
+        OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(format!("{}_app.log", since_the_epoch.as_secs()))
+            .expect("Failed to open log file")
+    );
+
+    Builder::from_default_env()
+        .target(env_logger::Target::Pipe(target))
+        .init();
+}
+
 fn main() -> Result<()> {
-    env_logger::init();
+    setup_logger();
     color_eyre::install()?;
     let (_ui_tx, ui_rx) = mpsc::channel(100);
     let (tx, rx) = mpsc::channel(100);
