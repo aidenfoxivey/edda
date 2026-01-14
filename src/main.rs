@@ -28,6 +28,7 @@ use tokio::sync::mpsc;
 
 mod mesh;
 mod types;
+mod router;
 
 #[derive(Debug)]
 struct Message {
@@ -82,6 +83,7 @@ enum Focus {
 }
 
 fn main() -> Result<()> {
+    env_logger::init();
     color_eyre::install()?;
     let (_ui_tx, ui_rx) = mpsc::channel(100);
     let (tx, rx) = mpsc::channel(100);
