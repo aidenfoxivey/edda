@@ -1,35 +1,33 @@
-// https://docs.rs/meshtastic/latest/meshtastic/
-// https://docs.rs/sqlite/latest/sqlite/
-// https://docs.rs/ratatui/latest/ratatui/
-//
-// A few goals for the project:
-// - graceful degradation on disconnection
-// - clear UI for sending messages
-// - support direct messages
+//! https://docs.rs/meshtastic/latest/meshtastic/
+//! https://docs.rs/sqlite/latest/sqlite/
+//! https://docs.rs/ratatui/latest/ratatui/
+//!
+//! A few goals for the project:
+//! - graceful degradation on disconnection
+//! - clear UI for sending messages
+//! - support direct messages
 
-use std::collections::HashMap;
-use std::fs::OpenOptions;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
-
+use crate::types::MeshEvent;
 use color_eyre::Result;
 use env_logger::Builder;
 use meshtastic::protobufs::NodeInfo;
 use meshtastic::types::NodeId;
-
-use crate::types::MeshEvent;
-use ratatui::DefaultTerminal;
 use ratatui::{
+    DefaultTerminal,
     crossterm::event::{self, Event, KeyCode},
     prelude::*,
     widgets::{
         Block, List, ListState, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Wrap,
     },
 };
+use std::collections::HashMap;
+use std::fs::OpenOptions;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::sync::mpsc;
 
 mod mesh;
-mod types;
 mod router;
+mod types;
 
 #[derive(Debug)]
 struct Message {
@@ -94,7 +92,7 @@ fn setup_logger() {
             .create(true)
             .append(true)
             .open(format!("{}_app.log", since_the_epoch.as_secs()))
-            .expect("Failed to open log file")
+            .expect("Failed to open log file"),
     );
 
     Builder::from_default_env()

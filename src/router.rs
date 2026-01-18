@@ -1,12 +1,11 @@
+//! A `Router` acts as middleware that can do work whenever a given message is sent or received.
+
+use crate::types::MeshEvent;
 use meshtastic::errors::Error;
 use meshtastic::packet::PacketRouter;
-use meshtastic::protobufs::from_radio::PayloadVariant;
-use meshtastic::protobufs::{FromRadio, MeshPacket, User};
+use meshtastic::protobufs::{FromRadio, MeshPacket, User, from_radio::PayloadVariant};
 use meshtastic::types::NodeId;
 use tokio::sync::mpsc::Sender;
-use crate::types::MeshEvent;
-
-/// A `Router` acts as middleware that can do work whenever a given message is sent or received.
 
 pub struct Router {
     user: Option<User>,
@@ -46,8 +45,10 @@ impl Router {
                             self.user = info.user.clone();
                         }
 
-
-                        if let Err(e) = self.ui_channel.try_send(MeshEvent::NodeAvailable(info.clone())) {
+                        if let Err(e) = self
+                            .ui_channel
+                            .try_send(MeshEvent::NodeAvailable(info.clone()))
+                        {
                             log::error!("Failed to send NodeAvailable event: {}", e);
                         }
                     }
@@ -67,7 +68,6 @@ impl Router {
                 }
             }
         }
-
     }
 }
 
@@ -77,7 +77,7 @@ impl PacketRouter<(), Error> for Router {
         Ok(())
     }
 
-    fn handle_mesh_packet(&mut self, packet: MeshPacket) -> Result<(), Error> {
+    fn handle_mesh_packet(&mut self, _packet: MeshPacket) -> Result<(), Error> {
         todo!()
     }
 

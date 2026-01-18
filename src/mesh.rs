@@ -1,10 +1,10 @@
-use crate::types::{MeshEvent, UiEvent};
+//! Handle communication with a Meshtastic device connected over serial.
+
 use crate::router::Router;
+use crate::types::{MeshEvent, UiEvent};
 use meshtastic::api::StreamApi;
-use meshtastic::protobufs::from_radio::PayloadVariant;
 use meshtastic::utils;
 use std::env;
-/// Handle communication with a Meshtastic device connected over serial.
 use tokio::sync::mpsc;
 
 #[tokio::main]
