@@ -1,6 +1,6 @@
 //! A `Router` acts as middleware that can do work whenever a given message is sent or received.
 
-use crate::types::MeshEvent;
+use crate::types::{MeshEvent, UiEvent};
 use meshtastic::errors::Error;
 use meshtastic::packet::PacketRouter;
 use meshtastic::protobufs::{FromRadio, MeshPacket, User, from_radio::PayloadVariant};
@@ -19,6 +19,14 @@ impl Router {
             user: None,
             node_num: None,
             ui_channel,
+        }
+    }
+
+    pub fn handle_ui_event(&mut self, event: UiEvent) {
+        match event {
+            UiEvent::Message { node_id, message } => {
+                self.ui_channel.try_send(MeshEvent::Message { node_id, message }).unwrap();
+            }
         }
     }
 
