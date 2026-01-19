@@ -9,7 +9,7 @@ use tokio::sync::mpsc;
 
 #[tokio::main]
 pub async fn run_meshtastic(
-    rx: mpsc::Receiver<UiEvent>,
+    _rx: mpsc::Receiver<UiEvent>,
     tx: mpsc::Sender<MeshEvent>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = env::args().collect();

@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 //! https://docs.rs/meshtastic/latest/meshtastic/
 //! https://docs.rs/sqlite/latest/sqlite/
 //! https://docs.rs/ratatui/latest/ratatui/
@@ -40,7 +42,6 @@ struct App {
     pub vertical_scroll_state: ScrollbarState,
     pub horizontal_scroll_state: ScrollbarState,
     pub vertical_scroll: usize,
-    pub horizontal_scroll: usize,
     pub nodes: HashMap<u32, NodeInfo>,
     pub input: String,
     pub focus: Option<Focus>,
@@ -56,7 +57,6 @@ impl Default for App {
             vertical_scroll_state: ScrollbarState::default(),
             horizontal_scroll_state: ScrollbarState::default(),
             vertical_scroll: 0,
-            horizontal_scroll: 0,
             nodes: HashMap::new(),
             input: String::new(),
             focus: None,
@@ -141,7 +141,7 @@ impl App {
 
             if let Ok(MeshEvent::NodeAvailable(node_info)) = rx.try_recv() {
                 let is_empty = self.nodes.is_empty();
-                self.nodes.insert(node_info.num, node_info);
+                self.nodes.insert(node_info.num, *node_info);
                 if is_empty {
                     self.node_list_state.select(Some(0));
                 }

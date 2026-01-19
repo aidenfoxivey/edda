@@ -47,7 +47,7 @@ impl Router {
 
                         if let Err(e) = self
                             .ui_channel
-                            .try_send(MeshEvent::NodeAvailable(info.clone()))
+                            .try_send(MeshEvent::NodeAvailable(Box::new(info.clone())))
                         {
                             log::error!("Failed to send NodeAvailable event: {}", e);
                         }
