@@ -19,6 +19,7 @@ use ratatui::{
 };
 
 pub struct App {
+    pub receiver: mpsc::Receiver<MeshEvent>,
     pub vertical_scroll_state: ScrollbarState,
     pub horizontal_scroll_state: ScrollbarState,
     pub nodes: HashMap<u32, NodeInfo>,
@@ -30,9 +31,10 @@ pub struct App {
     // pub current_conversation: Vec<Message>,
 }
 
-impl Default for App {
-    fn default() -> Self {
+impl App {
+    pub fn new(receiver: mpsc::Receiver<MeshEvent>) -> Self {
         Self {
+            receiver,
             vertical_scroll_state: ScrollbarState::default(),
             horizontal_scroll_state: ScrollbarState::default(),
             nodes: HashMap::new(),
@@ -43,33 +45,32 @@ impl Default for App {
             state: AppState::Loading,
         }
     }
-}
 
-impl App {
     fn get_sorted_nodes(&self) -> Vec<&NodeInfo> {
         let mut nodes: Vec<_> = self.nodes.values().collect();
         nodes.sort_by_key(|n| n.num);
         nodes
     }
 
-    pub fn run(
-        &mut self,
-        terminal: &mut DefaultTerminal,
-        mut rx: mpsc::Receiver<MeshEvent>,
-    ) -> Result<()> {
+    fn update(&mut self) {
+        if let Ok(MeshEvent::NodeAvailable(node_info)) = self.receiver.try_recv() {
+            let is_empty = self.nodes.is_empty();
+            self.nodes.insert(node_info.num, node_info);
+            if is_empty {
+                self.node_list_state.select(Some(0));
+            }
+            self.state = AppState::Loaded;
+        }
+        self.state = AppState::Loaded;
+    }
+
+    pub fn run(&mut self, terminal: &mut DefaultTerminal) -> Result<()> {
         let tick_rate = Duration::from_millis(250);
         let mut last_tick = Instant::now();
         loop {
             terminal.draw(|frame| self.draw(frame))?;
 
-            if let Ok(MeshEvent::NodeAvailable(node_info)) = rx.try_recv() {
-                let is_empty = self.nodes.is_empty();
-                self.nodes.insert(node_info.num, node_info);
-                if is_empty {
-                    self.node_list_state.select(Some(0));
-                }
-                self.state = AppState::Loaded;
-            }
+            self.update();
 
             let timeout = tick_rate.saturating_sub(last_tick.elapsed());
             if event::poll(timeout)?

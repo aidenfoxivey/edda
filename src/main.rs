@@ -55,9 +55,9 @@ fn main() -> Result<()> {
 
     // Generate the terminal handlers and run the Ratatui application.
     let mut terminal = ratatui::init();
-    let mut app = App::default();
+    let mut app = App::new(rx);
     // Take a receiver to transport information between the Meshtastic thread and the terminal thread.
-    let app_result = app.run(&mut terminal, rx);
+    let app_result = app.run(&mut terminal);
     ratatui::restore();
     app_result
 }
