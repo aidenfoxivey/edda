@@ -129,40 +129,6 @@ impl App {
         nodes
     }
 
-    fn next_node(&mut self) {
-        if self.nodes.is_empty() {
-            return;
-        }
-        let i = match self.node_list_state.selected() {
-            Some(i) => {
-                if i < self.nodes.len() - 1 {
-                    i + 1
-                } else {
-                    i
-                }
-            }
-            None => 0,
-        };
-        self.node_list_state.select(Some(i));
-    }
-
-    fn previous_node(&mut self) {
-        if self.nodes.is_empty() {
-            return;
-        }
-        let i = match self.node_list_state.selected() {
-            Some(i) => {
-                if i > 0 {
-                    i - 1
-                } else {
-                    i
-                }
-            }
-            None => 0,
-        };
-        self.node_list_state.select(Some(i));
-    }
-
     fn run(
         &mut self,
         terminal: &mut DefaultTerminal,
@@ -215,8 +181,12 @@ impl App {
                             if let Some(focus) = self.focus {
                                 match focus {
                                     Focus::NodeList => match key.code {
-                                        KeyCode::Char('j') | KeyCode::Down => self.next_node(),
-                                        KeyCode::Char('k') | KeyCode::Up => self.previous_node(),
+                                        KeyCode::Char('j') | KeyCode::Down => {
+                                            self.node_list_state.select_next()
+                                        }
+                                        KeyCode::Char('k') | KeyCode::Up => {
+                                            self.node_list_state.select_previous()
+                                        }
                                         KeyCode::Enter => {
                                             if let Some(selected_index) =
                                                 self.node_list_state.selected()
@@ -234,32 +204,16 @@ impl App {
                                     },
                                     Focus::Conversation => match key.code {
                                         KeyCode::Char('j') | KeyCode::Down => {
-                                            self.vertical_scroll =
-                                                self.vertical_scroll.saturating_add(1);
-                                            self.vertical_scroll_state = self
-                                                .vertical_scroll_state
-                                                .position(self.vertical_scroll);
+                                            self.vertical_scroll_state.next();
                                         }
                                         KeyCode::Char('k') | KeyCode::Up => {
-                                            self.vertical_scroll =
-                                                self.vertical_scroll.saturating_sub(1);
-                                            self.vertical_scroll_state = self
-                                                .vertical_scroll_state
-                                                .position(self.vertical_scroll);
+                                            self.vertical_scroll_state.prev();
                                         }
                                         KeyCode::Char('h') | KeyCode::Left => {
-                                            self.horizontal_scroll =
-                                                self.horizontal_scroll.saturating_sub(1);
-                                            self.horizontal_scroll_state = self
-                                                .horizontal_scroll_state
-                                                .position(self.horizontal_scroll);
+                                            self.horizontal_scroll_state.prev();
                                         }
                                         KeyCode::Char('l') | KeyCode::Right => {
-                                            self.horizontal_scroll =
-                                                self.horizontal_scroll.saturating_add(1);
-                                            self.horizontal_scroll_state = self
-                                                .horizontal_scroll_state
-                                                .position(self.horizontal_scroll);
+                                            self.horizontal_scroll_state.next()
                                         }
                                         _ => {}
                                     },
