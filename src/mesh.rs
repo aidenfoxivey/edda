@@ -1,15 +1,17 @@
 //! Handle communication with a Meshtastic device connected over serial.
 
-use crate::router::Router;
-use crate::types::{MeshEvent, UiEvent};
+use std::env;
+
 use meshtastic::api::StreamApi;
 use meshtastic::utils;
-use std::env;
 use tokio::sync::mpsc;
+
+use crate::router::Router;
+use crate::types::{MeshEvent, UiEvent};
 
 #[tokio::main]
 pub async fn run_meshtastic(
-    _rx: mpsc::Receiver<UiEvent>,
+    mut rx: mpsc::Receiver<UiEvent>,
     tx: mpsc::Sender<MeshEvent>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = env::args().collect();
@@ -26,8 +28,18 @@ pub async fn run_meshtastic(
 
     let mut router = Router::new(tx);
 
-    while let Some(packet) = pkt_receiver.recv().await {
-        router.handle_packet_from_radio(packet);
+    loop {
+        tokio::select! {
+            Some(packet) = pkt_receiver.recv() => {
+                router.handle_packet_from_radio(packet);
+            }
+            Some(ui_event) = rx.recv() => {
+                router.handle_ui_event(ui_event);
+            }
+            else => {
+                break;
+            }
+        }
     }
 
     Ok(())
