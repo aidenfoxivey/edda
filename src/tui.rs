@@ -1,6 +1,6 @@
 //! The UI code as well as business logic.
 
-use std::{collections::HashMap, time::Duration};
+use std::{collections::HashMap, rc::Rc, time::Duration};
 
 use color_eyre::eyre::Result;
 use meshtastic::protobufs::NodeInfo;
@@ -10,6 +10,7 @@ use ratatui::{
 };
 use tokio::{sync::mpsc, time::Instant};
 
+use crate::store::{InMemoryStore, Store};
 use crate::types::{AppState, Focus, MeshEvent};
 
 use ratatui::{
@@ -28,12 +29,13 @@ pub struct App {
     pub node_list_state: ListState,
     pub current_contact: Option<NodeInfo>,
     pub state: AppState,
+    store: Rc<dyn Store>,
     // pub current_conversation: Vec<Message>,
 }
 
 impl App {
     pub fn new(receiver: mpsc::Receiver<MeshEvent>) -> Self {
-        Self {
+        let mut app = Self {
             receiver,
             vertical_scroll_state: ScrollbarState::default(),
             horizontal_scroll_state: ScrollbarState::default(),
@@ -43,6 +45,18 @@ impl App {
             node_list_state: ListState::default(),
             current_contact: None,
             state: AppState::Loading,
+            store: Rc::new(InMemoryStore::new()),
+        };
+
+        app.load_stored_nodes();
+        app
+    }
+
+    fn load_stored_nodes(&mut self) {
+        let stored_nodes = self.store.get_nodes();
+        if !stored_nodes.is_empty() && self.nodes.is_empty() {
+            self.nodes = stored_nodes;
+            self.node_list_state.select(Some(0));
         }
     }
 
@@ -55,6 +69,13 @@ impl App {
     fn update(&mut self) {
         if let Ok(MeshEvent::NodeAvailable(node_info)) = self.receiver.try_recv() {
             let is_empty = self.nodes.is_empty();
+            // TODO(reggens): Check if the new node is already known and
+            // display a different UI indication for returning vs new nodes
+
+            Rc::get_mut(&mut self.store)
+                .unwrap()
+                .upsert_node((*node_info).clone());
+
             self.nodes.insert(node_info.num, *node_info);
             if is_empty {
                 self.node_list_state.select(Some(0));
