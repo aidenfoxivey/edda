@@ -13,3 +13,10 @@ Then run:
 ```bash
 cargo run -- <path to Meshtastic board>
 ```
+
+
+To run without a device, use:
+
+```bash
+cargo run -- mock
+```

@@ -10,7 +10,7 @@ use ratatui::{
 };
 use tokio::{sync::mpsc, time::Instant};
 
-use crate::types::{AppState, Focus, MeshEvent};
+use crate::types::{AppState, Focus, MeshEvent, Message};
 
 use ratatui::{
     crossterm::event::{self, Event, KeyCode},
@@ -28,7 +28,7 @@ pub struct App {
     pub node_list_state: ListState,
     pub current_contact: Option<NodeInfo>,
     pub state: AppState,
-    // pub current_conversation: Vec<Message>,
+    pub current_conversation: Vec<Message>,
 }
 
 impl App {
@@ -43,6 +43,7 @@ impl App {
             node_list_state: ListState::default(),
             current_contact: None,
             state: AppState::Loading,
+            current_conversation: Vec::new(),
         }
     }
 
@@ -53,15 +54,41 @@ impl App {
     }
 
     fn update(&mut self) {
-        if let Ok(MeshEvent::NodeAvailable(node_info)) = self.receiver.try_recv() {
-            let is_empty = self.nodes.is_empty();
-            self.nodes.insert(node_info.num, *node_info);
-            if is_empty {
-                self.node_list_state.select(Some(0));
+        while let Ok(event) = self.receiver.try_recv() {
+            match event {
+                MeshEvent::NodeAvailable(node_info) => {
+                    let is_empty = self.nodes.is_empty();
+                    self.nodes.insert(node_info.num, *node_info);
+                    if is_empty {
+                        self.node_list_state.select(Some(0));
+                    }
+                    self.state = AppState::Loaded;
+                }
+                MeshEvent::Message { node_id, message } => {
+                    use std::time::SystemTime;
+
+                    let name = self
+                        .nodes
+                        .values()
+                        .find(|node| node_id == node.num)
+                        .and_then(|node| node.user.as_ref())
+                        .map(|user| user.long_name.clone())
+                        .unwrap_or_else(|| format!("Unknown ({})", node_id));
+
+                    let msg = Message {
+                        to: node_id,
+                        name,
+                        message: message.clone(),
+                        ts: SystemTime::now(),
+                    };
+
+                    self.current_conversation.push(msg);
+                }
             }
+        }
+        if !self.nodes.is_empty() {
             self.state = AppState::Loaded;
         }
-        self.state = AppState::Loaded;
     }
 
     pub fn run(&mut self, terminal: &mut DefaultTerminal) -> Result<()> {
@@ -191,20 +218,32 @@ impl App {
         ])
         .split(horizontal_chunks[1]);
 
-        let text = vec![
-            Line::from("This is a line "),
-            Line::from("This is a line   ".red()),
-            Line::from("This is a line".on_dark_gray()),
-            Line::from("This is a longer line".crossed_out()),
-            Line::from(long_line.clone()),
-            Line::from("This is a line".reset()),
-            Line::from(vec![
-                "Masked text: ".into(),
-                Span::styled(Masked::new("password", '*'), Style::new().fg(Color::Red)),
-            ]),
-        ];
+        // Create conversation text from messages
+        let mut text = Vec::new();
+        for msg in &self.current_conversation {
+            let timestamp = msg
+                .ts
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+            let time_str = format!("{:02}:{:02}", (timestamp % 3600) / 60, timestamp % 60);
+
+            text.push(Line::from(vec![
+                Span::styled(format!("[{}] ", time_str), Style::new().fg(Color::DarkGray)),
+                Span::styled(
+                    format!("{}: ", msg.name),
+                    Style::new().fg(Color::Green).bold(),
+                ),
+                Span::raw(&msg.message),
+            ]));
+        }
+
+        if text.is_empty() {
+            text.push(Line::from("No messages yet...".italic()));
+        }
+
         self.vertical_scroll_state = self.vertical_scroll_state.content_length(text.len());
-        self.horizontal_scroll_state = self.horizontal_scroll_state.content_length(long_line.len());
+        self.horizontal_scroll_state = self.horizontal_scroll_state.content_length(100);
 
         let title = Block::new()
             .title_alignment(Alignment::Center)
