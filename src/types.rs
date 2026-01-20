@@ -16,9 +16,10 @@ pub enum MeshEvent {
 
 #[derive(Debug)]
 pub struct Message {
-    to: NodeId,
-    name: String,
-    ts: SystemTime,
+    pub to: NodeId,
+    pub name: String,
+    pub message: String,
+    pub ts: SystemTime,
 }
 
 #[derive(PartialEq)]
