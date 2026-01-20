@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 //! https://docs.rs/meshtastic/latest/meshtastic/
 //! https://docs.rs/sqlite/latest/sqlite/
 //! https://docs.rs/ratatui/latest/ratatui/

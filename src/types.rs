@@ -10,7 +10,7 @@ pub enum UiEvent {
 
 /// Events originating from the Meshtastic thread going to the user interface.
 pub enum MeshEvent {
-    NodeAvailable(NodeInfo),
+    NodeAvailable(Box<NodeInfo>),
     Message { node_id: NodeId, message: String },
 }
 
