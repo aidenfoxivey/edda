@@ -55,7 +55,7 @@ impl App {
     fn update(&mut self) {
         if let Ok(MeshEvent::NodeAvailable(node_info)) = self.receiver.try_recv() {
             let is_empty = self.nodes.is_empty();
-            self.nodes.insert(node_info.num, node_info);
+            self.nodes.insert(node_info.num, *node_info);
             if is_empty {
                 self.node_list_state.select(Some(0));
             }
@@ -217,18 +217,16 @@ impl App {
             "NO NODE CONNECTED".to_string()
         };
 
-        let paragraph = Paragraph::new(text.clone())
-            .gray()
-            .block(
-                Block::bordered()
-                    .gray()
-                    .title(title.as_str().bold())
-                    .border_style(if self.focus == Some(Focus::Conversation) {
-                        Style::default().fg(Color::Yellow)
-                    } else {
-                        Style::default()
-                    }),
-            );
+        let paragraph = Paragraph::new(text.clone()).gray().block(
+            Block::bordered()
+                .gray()
+                .title(title.as_str().bold())
+                .border_style(if self.focus == Some(Focus::Conversation) {
+                    Style::default().fg(Color::Yellow)
+                } else {
+                    Style::default()
+                }),
+        );
         frame.render_widget(paragraph, chunks[2]);
         frame.render_stateful_widget(
             Scrollbar::new(ScrollbarOrientation::VerticalRight)
