@@ -3,7 +3,7 @@
 use std::{collections::HashMap, time::Duration};
 
 use color_eyre::eyre::Result;
-use meshtastic::protobufs::{NodeInfo, admin_message::InputEvent};
+use meshtastic::protobufs::NodeInfo;
 use ratatui::{
     DefaultTerminal,
     widgets::{ListState, ScrollbarState},
@@ -192,6 +192,22 @@ impl App {
         let (search_rect, node_list_rect, title_rect, input_rect, conversation_rect) =
             Self::build_constraints(frame);
 
+        self.draw_title(frame, title_rect);
+        self.draw_conversation(frame, conversation_rect, input_rect);
+        self.draw_node_list(frame, node_list_rect);
+        self.draw_input_box(frame, input_rect);
+        self.draw_search_box(frame, search_rect);
+        self.set_cursor_position(frame, input_rect);
+    }
+
+    fn draw_title(&self, frame: &mut Frame, rect: Rect) {
+        let title = Block::new()
+            .title_alignment(Alignment::Center)
+            .title("MESHCOM 0.0.1".bold());
+        frame.render_widget(title, rect);
+    }
+
+    fn draw_conversation(&mut self, frame: &mut Frame, conversation_rect: Rect, scrollbar_rect: Rect) {
         let text = vec![
             Line::from("This is a line "),
             Line::from("This is a line   ".red()),
@@ -204,11 +220,6 @@ impl App {
             ]),
         ];
         self.vertical_scroll_state = self.vertical_scroll_state.content_length(text.len());
-
-        let title = Block::new()
-            .title_alignment(Alignment::Center)
-            .title("MESHCOM 0.0.1".bold());
-        frame.render_widget(title, title_rect);
 
         let title = if let Some(contact) = &self.current_contact {
             format!("CONNECTED: {}", contact.user.as_ref().unwrap().long_name)
@@ -231,10 +242,12 @@ impl App {
             Scrollbar::new(ScrollbarOrientation::VerticalRight)
                 .begin_symbol(Some("#"))
                 .end_symbol(Some("#")),
-            input_rect,
+            scrollbar_rect,
             &mut self.vertical_scroll_state,
         );
+    }
 
+    fn draw_node_list(&mut self, frame: &mut Frame, rect: Rect) {
         let nodes_list_block = Block::bordered()
             .gray()
             .title("NODE LIST".bold())
@@ -270,8 +283,10 @@ impl App {
             .highlight_symbol("> ")
             .highlight_style(Style::default().bg(Color::DarkGray));
 
-        frame.render_stateful_widget(list, node_list_rect, &mut self.node_list_state);
+        frame.render_stateful_widget(list, rect, &mut self.node_list_state);
+    }
 
+    fn draw_input_box(&self, frame: &mut Frame, rect: Rect) {
         let input_box = Paragraph::new(self.input.as_str())
             .block(Block::bordered().title("INPUT".bold()).border_style(
                 if self.focus == Some(Focus::Input) {
@@ -281,8 +296,10 @@ impl App {
                 },
             ))
             .wrap(Wrap { trim: false });
-        frame.render_widget(input_box, input_rect);
+        frame.render_widget(input_box, rect);
+    }
 
+    fn draw_search_box(&self, frame: &mut Frame, rect: Rect) {
         let search_box = Paragraph::new(self.search.as_str())
             .block(Block::bordered().title("SEARCH".bold()).border_style(
                 if self.focus == Some(Focus::Search) {
@@ -292,8 +309,10 @@ impl App {
                 },
             ))
             .wrap(Wrap { trim: false });
-        frame.render_widget(search_box, search_rect);
+        frame.render_widget(search_box, rect);
+    }
 
+    fn set_cursor_position(&self, frame: &mut Frame, input_rect: Rect) {
         if self.focus == Some(Focus::Input) {
             let input_width = input_rect.width.saturating_sub(2); // Subtract 2 for borders
             let line_count = (self.input.len() as u16 / input_width) + 1;
