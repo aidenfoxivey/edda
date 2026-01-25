@@ -27,4 +27,5 @@ pub enum Focus {
     NodeList,
     Conversation,
     Input,
+    Search,
 }

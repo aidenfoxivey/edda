@@ -77,18 +77,20 @@ impl App {
                     }
                     KeyCode::Tab => {
                         self.focus = match self.focus {
-                            None => Some(Focus::NodeList),
-                            Some(Focus::NodeList) => Some(Focus::Conversation),
-                            Some(Focus::Conversation) => Some(Focus::Input),
-                            Some(Focus::Input) => Some(Focus::NodeList),
+                            None => Some(Focus::Search),
+                            Some(Focus::Search) => Some(Focus::Input),
+                            Some(Focus::Input) => Some(Focus::Conversation),
+                            Some(Focus::Conversation) => Some(Focus::NodeList),
+                            Some(Focus::NodeList) => Some(Focus::Search),
                         };
                     }
                     KeyCode::BackTab => {
                         self.focus = match self.focus {
-                            None => Some(Focus::NodeList),
-                            Some(Focus::NodeList) => Some(Focus::Input),
-                            Some(Focus::Input) => Some(Focus::Conversation),
-                            Some(Focus::Conversation) => Some(Focus::NodeList),
+                            None => Some(Focus::Search),
+                            Some(Focus::Search) => Some(Focus::NodeList),
+                            Some(Focus::NodeList) => Some(Focus::Conversation),
+                            Some(Focus::Conversation) => Some(Focus::Input),
+                            Some(Focus::Input) => Some(Focus::Search),
                         };
                     }
                     _ => {
@@ -141,6 +143,7 @@ impl App {
                                     }
                                     _ => {}
                                 },
+                                Focus::Search => {}
                             }
                         } else if let KeyCode::Char('q') = key.code {
                             return Ok(());
