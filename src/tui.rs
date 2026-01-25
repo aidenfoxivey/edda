@@ -21,7 +21,6 @@ use ratatui::{
 pub struct App {
     pub receiver: mpsc::Receiver<MeshEvent>,
     pub vertical_scroll_state: ScrollbarState,
-    pub horizontal_scroll_state: ScrollbarState,
     pub nodes: HashMap<u32, NodeInfo>,
     pub input: String,
     pub focus: Option<Focus>,
@@ -34,7 +33,6 @@ impl App {
         Self {
             receiver,
             vertical_scroll_state: ScrollbarState::default(),
-            horizontal_scroll_state: ScrollbarState::default(),
             nodes: HashMap::new(),
             input: String::new(),
             focus: None,
@@ -123,12 +121,6 @@ impl App {
                                     KeyCode::Char('k') | KeyCode::Up => {
                                         self.vertical_scroll_state.prev();
                                     }
-                                    KeyCode::Char('h') | KeyCode::Left => {
-                                        self.horizontal_scroll_state.prev();
-                                    }
-                                    KeyCode::Char('l') | KeyCode::Right => {
-                                        self.horizontal_scroll_state.next()
-                                    }
                                     _ => {}
                                 },
                                 Focus::Input => match key.code {
@@ -189,7 +181,6 @@ impl App {
             ]),
         ];
         self.vertical_scroll_state = self.vertical_scroll_state.content_length(text.len());
-        self.horizontal_scroll_state = self.horizontal_scroll_state.content_length(long_line.len());
 
         let title = Block::new()
             .title_alignment(Alignment::Center)
