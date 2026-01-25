@@ -10,7 +10,7 @@ use ratatui::{
 };
 use tokio::{sync::mpsc, time::Instant};
 
-use crate::types::{AppState, Focus, MeshEvent};
+use crate::types::{Focus, MeshEvent};
 
 use ratatui::{
     crossterm::event::{self, Event, KeyCode},
@@ -27,8 +27,6 @@ pub struct App {
     pub focus: Option<Focus>,
     pub node_list_state: ListState,
     pub current_contact: Option<NodeInfo>,
-    pub state: AppState,
-    // pub current_conversation: Vec<Message>,
 }
 
 impl App {
@@ -42,7 +40,6 @@ impl App {
             focus: None,
             node_list_state: ListState::default(),
             current_contact: None,
-            state: AppState::Loading,
         }
     }
 
@@ -59,9 +56,7 @@ impl App {
             if is_empty {
                 self.node_list_state.select(Some(0));
             }
-            self.state = AppState::Loaded;
         }
-        self.state = AppState::Loaded;
     }
 
     pub fn run(&mut self, terminal: &mut DefaultTerminal) -> Result<()> {
@@ -76,87 +71,79 @@ impl App {
             if event::poll(timeout)?
                 && let Event::Key(key) = event::read()?
             {
-                if self.state == AppState::Loading {
-                    if let KeyCode::Char('q') = key.code {
-                        return Ok(());
+                match key.code {
+                    KeyCode::Esc => {
+                        self.focus = None;
                     }
-                } else {
-                    match key.code {
-                        KeyCode::Esc => {
-                            self.focus = None;
-                        }
-                        KeyCode::Tab => {
-                            self.focus = match self.focus {
-                                None => Some(Focus::NodeList),
-                                Some(Focus::NodeList) => Some(Focus::Conversation),
-                                Some(Focus::Conversation) => Some(Focus::Input),
-                                Some(Focus::Input) => Some(Focus::NodeList),
-                            };
-                        }
-                        KeyCode::BackTab => {
-                            self.focus = match self.focus {
-                                None => Some(Focus::NodeList),
-                                Some(Focus::NodeList) => Some(Focus::Input),
-                                Some(Focus::Input) => Some(Focus::Conversation),
-                                Some(Focus::Conversation) => Some(Focus::NodeList),
-                            };
-                        }
-                        _ => {
-                            if let Some(focus) = self.focus {
-                                match focus {
-                                    Focus::NodeList => match key.code {
-                                        KeyCode::Char('j') | KeyCode::Down => {
-                                            self.node_list_state.select_next()
-                                        }
-                                        KeyCode::Char('k') | KeyCode::Up => {
-                                            self.node_list_state.select_previous()
-                                        }
-                                        KeyCode::Enter => {
-                                            if let Some(selected_index) =
-                                                self.node_list_state.selected()
-                                            {
-                                                let nodes = self.get_sorted_nodes();
-                                                if let Some(selected_node) =
-                                                    nodes.get(selected_index)
-                                                {
-                                                    self.current_contact =
-                                                        Some((*selected_node).clone());
-                                                }
+                    KeyCode::Tab => {
+                        self.focus = match self.focus {
+                            None => Some(Focus::NodeList),
+                            Some(Focus::NodeList) => Some(Focus::Conversation),
+                            Some(Focus::Conversation) => Some(Focus::Input),
+                            Some(Focus::Input) => Some(Focus::NodeList),
+                        };
+                    }
+                    KeyCode::BackTab => {
+                        self.focus = match self.focus {
+                            None => Some(Focus::NodeList),
+                            Some(Focus::NodeList) => Some(Focus::Input),
+                            Some(Focus::Input) => Some(Focus::Conversation),
+                            Some(Focus::Conversation) => Some(Focus::NodeList),
+                        };
+                    }
+                    _ => {
+                        if let Some(focus) = self.focus {
+                            match focus {
+                                Focus::NodeList => match key.code {
+                                    KeyCode::Char('j') | KeyCode::Down => {
+                                        self.node_list_state.select_next()
+                                    }
+                                    KeyCode::Char('k') | KeyCode::Up => {
+                                        self.node_list_state.select_previous()
+                                    }
+                                    KeyCode::Enter => {
+                                        if let Some(selected_index) =
+                                            self.node_list_state.selected()
+                                        {
+                                            let nodes = self.get_sorted_nodes();
+                                            if let Some(selected_node) = nodes.get(selected_index) {
+                                                self.current_contact =
+                                                    Some((*selected_node).clone());
                                             }
                                         }
-                                        _ => {}
-                                    },
-                                    Focus::Conversation => match key.code {
-                                        KeyCode::Char('j') | KeyCode::Down => {
-                                            self.vertical_scroll_state.next();
-                                        }
-                                        KeyCode::Char('k') | KeyCode::Up => {
-                                            self.vertical_scroll_state.prev();
-                                        }
-                                        KeyCode::Char('h') | KeyCode::Left => {
-                                            self.horizontal_scroll_state.prev();
-                                        }
-                                        KeyCode::Char('l') | KeyCode::Right => {
-                                            self.horizontal_scroll_state.next()
-                                        }
-                                        _ => {}
-                                    },
-                                    Focus::Input => match key.code {
-                                        KeyCode::Char(c) => {
-                                            self.input.push(c);
-                                        }
-                                        KeyCode::Backspace => {
-                                            self.input.pop();
-                                        }
-                                        KeyCode::Enter => {
-                                            self.input.push('\n');
-                                        }
-                                        _ => {}
-                                    },
-                                }
-                            } else if let KeyCode::Char('q') = key.code {
-                                return Ok(());
+                                    }
+                                    _ => {}
+                                },
+                                Focus::Conversation => match key.code {
+                                    KeyCode::Char('j') | KeyCode::Down => {
+                                        self.vertical_scroll_state.next();
+                                    }
+                                    KeyCode::Char('k') | KeyCode::Up => {
+                                        self.vertical_scroll_state.prev();
+                                    }
+                                    KeyCode::Char('h') | KeyCode::Left => {
+                                        self.horizontal_scroll_state.prev();
+                                    }
+                                    KeyCode::Char('l') | KeyCode::Right => {
+                                        self.horizontal_scroll_state.next()
+                                    }
+                                    _ => {}
+                                },
+                                Focus::Input => match key.code {
+                                    KeyCode::Char(c) => {
+                                        self.input.push(c);
+                                    }
+                                    KeyCode::Backspace => {
+                                        self.input.pop();
+                                    }
+                                    KeyCode::Enter => {
+                                        self.input.push('\n');
+                                    }
+                                    _ => {}
+                                },
                             }
+                        } else if let KeyCode::Char('q') = key.code {
+                            return Ok(());
                         }
                     }
                 }
@@ -168,11 +155,6 @@ impl App {
     }
 
     fn draw(&mut self, frame: &mut Frame) {
-        if self.state == AppState::Loading {
-            self.draw_loading(frame);
-            return;
-        }
-
         let area = frame.area();
 
         let s =
