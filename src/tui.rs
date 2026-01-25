@@ -3,7 +3,7 @@
 use std::{collections::HashMap, time::Duration};
 
 use color_eyre::eyre::Result;
-use meshtastic::protobufs::NodeInfo;
+use meshtastic::protobufs::{NodeInfo, admin_message::InputEvent};
 use ratatui::{
     DefaultTerminal,
     widgets::{ListState, ScrollbarState},
@@ -23,6 +23,7 @@ pub struct App {
     pub vertical_scroll_state: ScrollbarState,
     pub nodes: HashMap<u32, NodeInfo>,
     pub input: String,
+    pub search: String,
     pub focus: Option<Focus>,
     pub node_list_state: ListState,
     pub current_contact: Option<NodeInfo>,
@@ -35,6 +36,7 @@ impl App {
             vertical_scroll_state: ScrollbarState::default(),
             nodes: HashMap::new(),
             input: String::new(),
+            search: String::new(),
             focus: None,
             node_list_state: ListState::default(),
             current_contact: None,
@@ -135,7 +137,18 @@ impl App {
                                     }
                                     _ => {}
                                 },
-                                Focus::Search => {}
+                                Focus::Search => match key.code {
+                                    KeyCode::Char(c) => {
+                                        self.search.push(c);
+                                    }
+                                    KeyCode::Backspace => {
+                                        self.search.pop();
+                                    }
+                                    KeyCode::Enter => {
+                                        self.search.push('\n');
+                                    }
+                                    _ => {}
+                                },
                             }
                         } else if let KeyCode::Char('q') = key.code {
                             return Ok(());
@@ -149,19 +162,35 @@ impl App {
         }
     }
 
-    fn draw(&mut self, frame: &mut Frame) {
+    fn build_constraints(frame: &mut Frame) -> (Rect, Rect, Rect, Rect, Rect) {
         let area = frame.area();
 
         let horizontal_chunks =
             Layout::horizontal([Constraint::Percentage(30), Constraint::Percentage(70)])
                 .split(area);
 
-        let chunks = Layout::vertical([
+        let left_side = Layout::vertical([Constraint::Min(4), Constraint::Percentage(100)])
+            .split(horizontal_chunks[0]);
+
+        let right_side = Layout::vertical([
             Constraint::Min(1),
             Constraint::Percentage(10),
             Constraint::Percentage(90),
         ])
         .split(horizontal_chunks[1]);
+
+        (
+            left_side[0],
+            left_side[1],
+            right_side[0],
+            right_side[1],
+            right_side[2],
+        )
+    }
+
+    fn draw(&mut self, frame: &mut Frame) {
+        let (search_rect, node_list_rect, title_rect, input_rect, conversation_rect) =
+            Self::build_constraints(frame);
 
         let text = vec![
             Line::from("This is a line "),
@@ -179,7 +208,7 @@ impl App {
         let title = Block::new()
             .title_alignment(Alignment::Center)
             .title("MESHCOM 0.0.1".bold());
-        frame.render_widget(title, chunks[0]);
+        frame.render_widget(title, title_rect);
 
         let title = if let Some(contact) = &self.current_contact {
             format!("CONNECTED: {}", contact.user.as_ref().unwrap().long_name)
@@ -197,12 +226,12 @@ impl App {
                     Style::default()
                 }),
         );
-        frame.render_widget(paragraph, chunks[2]);
+        frame.render_widget(paragraph, conversation_rect);
         frame.render_stateful_widget(
             Scrollbar::new(ScrollbarOrientation::VerticalRight)
                 .begin_symbol(Some("#"))
                 .end_symbol(Some("#")),
-            chunks[1],
+            input_rect,
             &mut self.vertical_scroll_state,
         );
 
@@ -241,7 +270,7 @@ impl App {
             .highlight_symbol("> ")
             .highlight_style(Style::default().bg(Color::DarkGray));
 
-        frame.render_stateful_widget(list, horizontal_chunks[0], &mut self.node_list_state);
+        frame.render_stateful_widget(list, node_list_rect, &mut self.node_list_state);
 
         let input_box = Paragraph::new(self.input.as_str())
             .block(Block::bordered().title("INPUT".bold()).border_style(
@@ -252,13 +281,24 @@ impl App {
                 },
             ))
             .wrap(Wrap { trim: false });
-        frame.render_widget(input_box, chunks[1]);
+        frame.render_widget(input_box, input_rect);
+
+        let search_box = Paragraph::new(self.search.as_str())
+            .block(Block::bordered().title("SEARCH".bold()).border_style(
+                if self.focus == Some(Focus::Search) {
+                    Style::default().fg(Color::Yellow)
+                } else {
+                    Style::default()
+                },
+            ))
+            .wrap(Wrap { trim: false });
+        frame.render_widget(search_box, search_rect);
 
         if self.focus == Some(Focus::Input) {
-            let input_width = chunks[1].width.saturating_sub(2); // Subtract 2 for borders
+            let input_width = input_rect.width.saturating_sub(2); // Subtract 2 for borders
             let line_count = (self.input.len() as u16 / input_width) + 1;
-            let cursor_x = chunks[1].x + (self.input.len() as u16 % input_width) + 1;
-            let cursor_y = chunks[1].y + line_count;
+            let cursor_x = input_rect.x + (self.input.len() as u16 % input_width) + 1;
+            let cursor_y = input_rect.y + line_count;
             frame.set_cursor_position((cursor_x, cursor_y));
         }
     }
