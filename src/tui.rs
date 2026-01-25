@@ -207,7 +207,12 @@ impl App {
         frame.render_widget(title, rect);
     }
 
-    fn draw_conversation(&mut self, frame: &mut Frame, conversation_rect: Rect, scrollbar_rect: Rect) {
+    fn draw_conversation(
+        &mut self,
+        frame: &mut Frame,
+        conversation_rect: Rect,
+        scrollbar_rect: Rect,
+    ) {
         let text = vec![
             Line::from("This is a line "),
             Line::from("This is a line   ".red()),
@@ -277,6 +282,20 @@ impl App {
                 line
             })
             .collect();
+
+        // Filter based on what's in search.
+        let items: Vec<_> = if self.search.is_empty() {
+            items
+        } else {
+            items
+                .into_iter()
+                .filter(|line| {
+                    line.to_string()
+                        .to_lowercase()
+                        .contains(&self.search.to_lowercase())
+                })
+                .collect()
+        };
 
         let list = List::new(items)
             .block(nodes_list_block)
