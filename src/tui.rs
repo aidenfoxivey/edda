@@ -152,11 +152,6 @@ impl App {
     fn draw(&mut self, frame: &mut Frame) {
         let area = frame.area();
 
-        let s =
-            "Veeeeeeeeeeeeeeeery    loooooooooooooooooong   striiiiiiiiiiiiiiiiiiiiiiiiiing.   ";
-        let mut long_line = s.repeat(usize::from(area.width) / s.len() + 4);
-        long_line.push('\n');
-
         let horizontal_chunks =
             Layout::horizontal([Constraint::Percentage(30), Constraint::Percentage(70)])
                 .split(area);
@@ -173,7 +168,6 @@ impl App {
             Line::from("This is a line   ".red()),
             Line::from("This is a line".on_dark_gray()),
             Line::from("This is a longer line".crossed_out()),
-            Line::from(long_line.clone()),
             Line::from("This is a line".reset()),
             Line::from(vec![
                 "Masked text: ".into(),
