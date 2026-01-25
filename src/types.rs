@@ -21,16 +21,11 @@ pub struct Message {
     ts: SystemTime,
 }
 
-#[derive(PartialEq)]
-pub enum AppState {
-    Loading,
-    Loaded,
-}
-
 /// The specific element of the UI that is currently focused.
 #[derive(PartialEq, Copy, Clone)]
 pub enum Focus {
     NodeList,
     Conversation,
     Input,
+    Search,
 }
