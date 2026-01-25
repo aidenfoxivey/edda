@@ -3,6 +3,7 @@
 use std::env;
 
 use meshtastic::api::StreamApi;
+use meshtastic::packet::PacketDestination;
 use meshtastic::utils;
 use tokio::sync::mpsc;
 
@@ -11,7 +12,7 @@ use crate::types::{MeshEvent, UiEvent};
 
 #[tokio::main]
 pub async fn run_meshtastic(
-    mut rx: mpsc::Receiver<UiEvent>,
+    mut tui_receiver: mpsc::Receiver<UiEvent>,
     tx: mpsc::Sender<MeshEvent>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = env::args().collect();
@@ -24,7 +25,7 @@ pub async fn run_meshtastic(
     let (mut pkt_receiver, stream_api) = stream_api.connect(serial_stream).await;
 
     let config_id = utils::generate_rand_id();
-    let _stream_api = stream_api.configure(config_id).await?;
+    let mut stream_api = stream_api.configure(config_id).await?;
 
     let mut router = Router::new(tx);
 
@@ -33,8 +34,8 @@ pub async fn run_meshtastic(
             Some(packet) = pkt_receiver.recv() => {
                 router.handle_packet_from_radio(packet);
             }
-            Some(ui_event) = rx.recv() => {
-                router.handle_ui_event(ui_event);
+            Some(_tui_event) = tui_receiver.recv() => {
+                stream_api.send_text(&mut router, "Hello world!".to_string(), PacketDestination::Broadcast, true, 0.into()).await?;
             }
             else => {
                 break;

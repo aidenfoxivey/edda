@@ -45,7 +45,7 @@ fn setup_logger() {
 fn main() -> Result<()> {
     setup_logger();
     color_eyre::install()?;
-    let (_ui_tx, ui_rx) = mpsc::channel(100);
+    let (ui_tx, ui_rx) = mpsc::channel(100);
     let (tx, rx) = mpsc::channel(100);
 
     // Run a seperate thread that listens to the Meshtastic interface.
@@ -57,7 +57,7 @@ fn main() -> Result<()> {
 
     // Generate the terminal handlers and run the Ratatui application.
     let mut terminal = ratatui::init();
-    let mut app = App::new(rx);
+    let mut app = App::new(rx, ui_tx);
     // Take a receiver to transport information between the Meshtastic thread and the terminal thread.
     let app_result = app.run(&mut terminal);
     ratatui::restore();

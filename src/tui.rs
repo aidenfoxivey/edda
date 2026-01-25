@@ -10,7 +10,7 @@ use ratatui::{
 };
 use tokio::{sync::mpsc, time::Instant};
 
-use crate::types::{AppState, Focus, MeshEvent};
+use crate::types::{AppState, Focus, MeshEvent, UiEvent};
 
 use ratatui::{
     crossterm::event::{self, Event, KeyCode},
@@ -20,29 +20,30 @@ use ratatui::{
 
 pub struct App {
     pub receiver: mpsc::Receiver<MeshEvent>,
+    pub transmitter: mpsc::Sender<UiEvent>,
     pub vertical_scroll_state: ScrollbarState,
-    pub horizontal_scroll_state: ScrollbarState,
     pub nodes: HashMap<u32, NodeInfo>,
     pub input: String,
     pub focus: Option<Focus>,
     pub node_list_state: ListState,
     pub current_contact: Option<NodeInfo>,
     pub state: AppState,
-    // pub current_conversation: Vec<Message>,
+    pub current_conversation: Vec<String>,
 }
 
 impl App {
-    pub fn new(receiver: mpsc::Receiver<MeshEvent>) -> Self {
+    pub fn new(receiver: mpsc::Receiver<MeshEvent>, transmitter: mpsc::Sender<UiEvent>) -> Self {
         Self {
             receiver,
+            transmitter,
             vertical_scroll_state: ScrollbarState::default(),
-            horizontal_scroll_state: ScrollbarState::default(),
             nodes: HashMap::new(),
             input: String::new(),
             focus: None,
             node_list_state: ListState::default(),
             current_contact: None,
             state: AppState::Loading,
+            current_conversation: vec![],
         }
     }
 
@@ -53,13 +54,20 @@ impl App {
     }
 
     fn update(&mut self) {
-        if let Ok(MeshEvent::NodeAvailable(node_info)) = self.receiver.try_recv() {
-            let is_empty = self.nodes.is_empty();
-            self.nodes.insert(node_info.num, *node_info);
-            if is_empty {
-                self.node_list_state.select(Some(0));
+        while let Ok(event) = self.receiver.try_recv() {
+            match event {
+                MeshEvent::NodeAvailable(node_info) => {
+                    let is_empty = self.nodes.is_empty();
+                    self.nodes.insert(node_info.num, *node_info);
+                    if is_empty {
+                        self.node_list_state.select(Some(0));
+                    }
+                    self.state = AppState::Loaded;
+                }
+                MeshEvent::Message { node_id: _, message } => {
+                    self.current_conversation.push(message);
+                }
             }
-            self.state = AppState::Loaded;
         }
         self.state = AppState::Loaded;
     }
@@ -133,23 +141,33 @@ impl App {
                                         KeyCode::Char('k') | KeyCode::Up => {
                                             self.vertical_scroll_state.prev();
                                         }
-                                        KeyCode::Char('h') | KeyCode::Left => {
-                                            self.horizontal_scroll_state.prev();
-                                        }
-                                        KeyCode::Char('l') | KeyCode::Right => {
-                                            self.horizontal_scroll_state.next()
-                                        }
                                         _ => {}
                                     },
                                     Focus::Input => match key.code {
                                         KeyCode::Char(c) => {
-                                            self.input.push(c);
+                                            // Only add character if we're under 237 bytes
+                                            if self.input.len() < 237 {
+                                                self.input.push(c);
+                                            }
                                         }
                                         KeyCode::Backspace => {
                                             self.input.pop();
                                         }
                                         KeyCode::Enter => {
-                                            self.input.push('\n');
+                                            let trimmed = self.input.trim().to_string();
+                                            assert!(trimmed.len() <= 237);
+
+                                            if !trimmed.is_empty() {
+                                                if let Some(contact) = &self.current_contact {
+                                                    if let Ok(_) = self.transmitter.try_send(UiEvent::Message {
+                                                        node_id: contact.num.into(),
+                                                        message: trimmed.clone(),
+                                                    }) {
+                                                        self.current_conversation.push(trimmed);
+                                                    }
+                                                }
+                                            }
+                                            self.input.clear();
                                         }
                                         _ => {}
                                     },
@@ -175,11 +193,6 @@ impl App {
 
         let area = frame.area();
 
-        let s =
-            "Veeeeeeeeeeeeeeeery    loooooooooooooooooong   striiiiiiiiiiiiiiiiiiiiiiiiiing.   ";
-        let mut long_line = s.repeat(usize::from(area.width) / s.len() + 4);
-        long_line.push('\n');
-
         let horizontal_chunks =
             Layout::horizontal([Constraint::Percentage(30), Constraint::Percentage(70)])
                 .split(area);
@@ -191,20 +204,8 @@ impl App {
         ])
         .split(horizontal_chunks[1]);
 
-        let text = vec![
-            Line::from("This is a line "),
-            Line::from("This is a line   ".red()),
-            Line::from("This is a line".on_dark_gray()),
-            Line::from("This is a longer line".crossed_out()),
-            Line::from(long_line.clone()),
-            Line::from("This is a line".reset()),
-            Line::from(vec![
-                "Masked text: ".into(),
-                Span::styled(Masked::new("password", '*'), Style::new().fg(Color::Red)),
-            ]),
-        ];
+        let text: Vec<Line> = self.current_conversation.iter().map(|msg| Line::from(msg.as_str())).collect();
         self.vertical_scroll_state = self.vertical_scroll_state.content_length(text.len());
-        self.horizontal_scroll_state = self.horizontal_scroll_state.content_length(long_line.len());
 
         let title = Block::new()
             .title_alignment(Alignment::Center)

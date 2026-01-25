@@ -33,13 +33,33 @@ impl Router {
         }
     }
 
+    // pub fn foo() {
+    //     match tui_event {
+    //         UiEvent::Message { node_id, message } => {
+    //             let channel = MeshChannel::new(0)?;
+    //             let packet = stream_api
+    //                 .send_text(
+    //                     &mut router,
+    //                     message,
+    //                     PacketDestination::Node(node_id),
+    //                     true,
+    //                     channel,
+    //                 )
+    //                 .await?;
+    //             log::info!("Sent message packet: {:?}", packet);
+    //         }
+    //     }
+    // }
+
     pub fn handle_packet_from_radio(&mut self, packet: FromRadio) {
         match packet.payload_variant.as_ref() {
             // TODO(aidenfoxivey): This must be turned into a logger stmt instead.
             None => panic!("Unexpected packet from_radio"),
             Some(variant) => {
                 match variant {
-                    PayloadVariant::Packet(_) => {}
+                    PayloadVariant::Packet(mesh_packet) => {
+                        self.handle_mesh_packet(mesh_packet.clone()).unwrap();
+                    }
                     PayloadVariant::MyInfo(info) => {
                         // TODO(aidenfoxivey): I don't know that this case can happen, but want to be sure.
                         if self.node_num.is_some() {
@@ -52,8 +72,9 @@ impl Router {
                         if let Some(node_num) = self.node_num
                             && node_num == info.num
                         {
-                            log::info!("Receiving current node user information");
+                            log::info!("Received current node user information");
                             self.user = info.user.clone();
+                            return; // Don't add the current node.
                         }
 
                         if let Err(e) = self
@@ -88,8 +109,10 @@ impl PacketRouter<(), Error> for Router {
         Ok(())
     }
 
-    fn handle_mesh_packet(&mut self, _packet: MeshPacket) -> Result<(), Error> {
-        todo!()
+    fn handle_mesh_packet(&mut self, packet: MeshPacket) -> Result<(), Error> {
+        // This is called by the PacketRouter trait for outgoing packets
+        // Incoming packets are handled via handle_packet_from_radio
+        Ok(())
     }
 
     fn source_node_id(&self) -> NodeId {
