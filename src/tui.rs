@@ -8,7 +8,10 @@ use ratatui::{
     DefaultTerminal,
     widgets::{ListState, ScrollbarState},
 };
-use tokio::{sync::mpsc::{self}, time::Instant};
+use tokio::{
+    sync::mpsc::{self},
+    time::Instant,
+};
 
 use crate::types::{Focus, MeshEvent, UiEvent};
 
@@ -67,8 +70,7 @@ impl App {
                     self.current_conversation.push(message);
                 }
             }
-            Err(_) => {
-            }
+            Err(_) => {}
         }
     }
 
@@ -153,19 +155,18 @@ impl App {
                                         self.input.pop();
                                     }
                                     KeyCode::Enter => {
-                                        if !self.current_contact.is_none() {
+                                        if let Some(ref id) = self.current_contact {
                                             self.current_conversation.push(self.input.clone());
 
-                                            let node_id =  NodeId::new(self.current_contact.as_ref().unwrap().num);
+                                            let node_id = NodeId::new(id.num);
                                             let msg = UiEvent::Message {
                                                 node_id,
-                                                message: self.input.clone()
+                                                message: self.input.clone(),
                                             };
 
                                             log::info!("Sending packet to {}", node_id);
                                             self.input.clear();
                                             self.transmitter.try_send(msg).unwrap();
-
                                         }
                                     }
                                     _ => {}
@@ -246,7 +247,9 @@ impl App {
         conversation_rect: Rect,
         scrollbar_rect: Rect,
     ) {
-        self.vertical_scroll_state = self.vertical_scroll_state.content_length(self.current_conversation.len());
+        self.vertical_scroll_state = self
+            .vertical_scroll_state
+            .content_length(self.current_conversation.len());
 
         let title = if let Some(contact) = &self.current_contact {
             format!("CONNECTED: {}", contact.user.as_ref().unwrap().long_name)
@@ -254,7 +257,11 @@ impl App {
             "NO NODE CONNECTED".to_string()
         };
 
-        let text: Vec<Line> = self.current_conversation.iter().map(|x| Line::from(x.as_ref())).collect();
+        let text: Vec<Line> = self
+            .current_conversation
+            .iter()
+            .map(|x| Line::from(x.as_ref()))
+            .collect();
 
         let paragraph = Paragraph::new(text).gray().block(
             Block::bordered()

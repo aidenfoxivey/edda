@@ -1,12 +1,13 @@
 //! A `Router` acts as middleware that can do work whenever a given message is sent or received.
 
+use meshtastic::Message;
 use meshtastic::errors::Error;
 use meshtastic::packet::PacketRouter;
 use meshtastic::protobufs::{FromRadio, MeshPacket, User, from_radio::PayloadVariant};
 use meshtastic::types::NodeId;
 use tokio::sync::mpsc::Sender;
 
-use crate::types::{MeshEvent};
+use crate::types::MeshEvent;
 
 pub struct Router {
     user: Option<User>,
@@ -29,7 +30,20 @@ impl Router {
             None => panic!("Unexpected packet from_radio"),
             Some(variant) => {
                 match variant {
-                    PayloadVariant::Packet(_) => {}
+                    PayloadVariant::Packet(packet) => {
+                        if let Some(node_num) = self.node_num
+                            && node_num == packet.to {
+                                log::info!("Received packet for self");
+                                let v = packet.encode_to_vec();
+                                let msg = String::from_utf8_lossy(&v);
+                                self.ui_channel
+                                    .try_send(MeshEvent::Message {
+                                        node_id: NodeId::from(packet.from),
+                                        message: msg.to_string(),
+                                    })
+                                    .unwrap();
+                            }
+                    }
                     PayloadVariant::MyInfo(info) => {
                         // TODO(aidenfoxivey): I don't know that this case can happen, but want to be sure.
                         if self.node_num.is_some() {
