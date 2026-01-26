@@ -27,6 +27,7 @@ pub struct App {
     pub focus: Option<Focus>,
     pub node_list_state: ListState,
     pub current_contact: Option<NodeInfo>,
+    pub current_conversation: Vec<String>,
 }
 
 impl App {
@@ -40,6 +41,7 @@ impl App {
             focus: None,
             node_list_state: ListState::default(),
             current_contact: None,
+            current_conversation: Vec::new(),
         }
     }
 
@@ -127,13 +129,19 @@ impl App {
                                 },
                                 Focus::Input => match key.code {
                                     KeyCode::Char(c) => {
-                                        self.input.push(c);
+                                        // Arbitrary limit of 237 characters
+                                        if self.input.len() <= 237 {
+                                            self.input.push(c);
+                                        }
                                     }
                                     KeyCode::Backspace => {
                                         self.input.pop();
                                     }
                                     KeyCode::Enter => {
-                                        self.input.push('\n');
+                                        if !self.current_contact.is_none() {
+                                            self.current_conversation.push(self.input.clone());
+                                            self.input.clear();
+                                        }
                                     }
                                     _ => {}
                                 },
@@ -213,18 +221,7 @@ impl App {
         conversation_rect: Rect,
         scrollbar_rect: Rect,
     ) {
-        let text = vec![
-            Line::from("This is a line "),
-            Line::from("This is a line   ".red()),
-            Line::from("This is a line".on_dark_gray()),
-            Line::from("This is a longer line".crossed_out()),
-            Line::from("This is a line".reset()),
-            Line::from(vec![
-                "Masked text: ".into(),
-                Span::styled(Masked::new("password", '*'), Style::new().fg(Color::Red)),
-            ]),
-        ];
-        self.vertical_scroll_state = self.vertical_scroll_state.content_length(text.len());
+        self.vertical_scroll_state = self.vertical_scroll_state.content_length(self.current_conversation.len());
 
         let title = if let Some(contact) = &self.current_contact {
             format!("CONNECTED: {}", contact.user.as_ref().unwrap().long_name)
@@ -232,7 +229,9 @@ impl App {
             "NO NODE CONNECTED".to_string()
         };
 
-        let paragraph = Paragraph::new(text.clone()).gray().block(
+        let text: Vec<Line> = self.current_conversation.iter().map(|x| Line::from(x.as_ref())).collect();
+
+        let paragraph = Paragraph::new(text).gray().block(
             Block::bordered()
                 .gray()
                 .title(title.as_str().bold())
