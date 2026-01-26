@@ -3,14 +3,14 @@
 use std::{collections::HashMap, time::Duration};
 
 use color_eyre::eyre::Result;
-use meshtastic::protobufs::NodeInfo;
+use meshtastic::{protobufs::NodeInfo, types::NodeId};
 use ratatui::{
     DefaultTerminal,
     widgets::{ListState, ScrollbarState},
 };
-use tokio::{sync::mpsc, time::Instant};
+use tokio::{sync::mpsc::{self}, time::Instant};
 
-use crate::types::{Focus, MeshEvent};
+use crate::types::{Focus, MeshEvent, UiEvent};
 
 use ratatui::{
     crossterm::event::{self, Event, KeyCode},
@@ -19,6 +19,7 @@ use ratatui::{
 };
 
 pub struct App {
+    pub transmitter: mpsc::Sender<UiEvent>,
     pub receiver: mpsc::Receiver<MeshEvent>,
     pub vertical_scroll_state: ScrollbarState,
     pub nodes: HashMap<u32, NodeInfo>,
@@ -31,8 +32,9 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(receiver: mpsc::Receiver<MeshEvent>) -> Self {
+    pub fn new(transmitter: mpsc::Sender<UiEvent>, receiver: mpsc::Receiver<MeshEvent>) -> Self {
         Self {
+            transmitter,
             receiver,
             vertical_scroll_state: ScrollbarState::default(),
             nodes: HashMap::new(),
@@ -52,11 +54,20 @@ impl App {
     }
 
     fn update(&mut self) {
-        if let Ok(MeshEvent::NodeAvailable(node_info)) = self.receiver.try_recv() {
-            let is_empty = self.nodes.is_empty();
-            self.nodes.insert(node_info.num, *node_info);
-            if is_empty {
-                self.node_list_state.select(Some(0));
+        match self.receiver.try_recv() {
+            Ok(MeshEvent::NodeAvailable(node_info)) => {
+                let is_empty = self.nodes.is_empty();
+                self.nodes.insert(node_info.num, *node_info);
+                if is_empty {
+                    self.node_list_state.select(Some(0));
+                }
+            }
+            Ok(MeshEvent::Message { node_id, message }) => {
+                if Some(NodeId::from(self.current_contact.clone().unwrap().num)) == Some(node_id) {
+                    self.current_conversation.push(message);
+                }
+            }
+            Err(_) => {
             }
         }
     }
@@ -111,8 +122,12 @@ impl App {
                                         {
                                             let nodes = self.get_sorted_nodes();
                                             if let Some(selected_node) = nodes.get(selected_index) {
-                                                self.current_contact =
-                                                    Some((*selected_node).clone());
+                                                let new_node = Some((*selected_node).clone());
+                                                if new_node != self.current_contact {
+                                                    // TODO(reggens): add db lookup here
+                                                    self.current_conversation = vec![];
+                                                    self.current_contact = new_node;
+                                                }
                                             }
                                         }
                                     }
@@ -140,7 +155,17 @@ impl App {
                                     KeyCode::Enter => {
                                         if !self.current_contact.is_none() {
                                             self.current_conversation.push(self.input.clone());
+
+                                            let node_id =  NodeId::new(self.current_contact.as_ref().unwrap().num);
+                                            let msg = UiEvent::Message {
+                                                node_id,
+                                                message: self.input.clone()
+                                            };
+
+                                            log::info!("Sending packet to {}", node_id);
                                             self.input.clear();
+                                            self.transmitter.try_send(msg).unwrap();
+
                                         }
                                     }
                                     _ => {}

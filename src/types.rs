@@ -4,6 +4,7 @@ use meshtastic::protobufs::NodeInfo;
 use meshtastic::types::NodeId;
 
 /// Events originating from the user interface and going to the Meshtastic thread.
+#[derive(Debug)]
 pub enum UiEvent {
     Message { node_id: NodeId, message: String },
 }

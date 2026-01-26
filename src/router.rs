@@ -6,7 +6,7 @@ use meshtastic::protobufs::{FromRadio, MeshPacket, User, from_radio::PayloadVari
 use meshtastic::types::NodeId;
 use tokio::sync::mpsc::Sender;
 
-use crate::types::{MeshEvent, UiEvent};
+use crate::types::{MeshEvent};
 
 pub struct Router {
     user: Option<User>,
@@ -20,16 +20,6 @@ impl Router {
             user: None,
             node_num: None,
             ui_channel,
-        }
-    }
-
-    pub fn handle_ui_event(&mut self, event: UiEvent) {
-        match event {
-            UiEvent::Message { node_id, message } => {
-                self.ui_channel
-                    .try_send(MeshEvent::Message { node_id, message })
-                    .unwrap();
-            }
         }
     }
 

@@ -45,19 +45,19 @@ fn setup_logger() {
 fn main() -> Result<()> {
     setup_logger();
     color_eyre::install()?;
-    let (_ui_tx, ui_rx) = mpsc::channel(100);
-    let (tx, rx) = mpsc::channel(100);
+    let (ui_tx, ui_rx) = mpsc::channel(100);
+    let (mesh_tx, mesh_rx) = mpsc::channel(100);
 
     // Run a seperate thread that listens to the Meshtastic interface.
     std::thread::spawn(move || {
-        if let Err(e) = mesh::run_meshtastic(ui_rx, tx) {
+        if let Err(e) = mesh::run_meshtastic(ui_rx, mesh_tx) {
             eprintln!("Meshtastic thread error: {}", e);
         }
     });
 
     // Generate the terminal handlers and run the Ratatui application.
     let mut terminal = ratatui::init();
-    let mut app = App::new(rx);
+    let mut app = App::new(ui_tx, mesh_rx);
     // Take a receiver to transport information between the Meshtastic thread and the terminal thread.
     let app_result = app.run(&mut terminal);
     ratatui::restore();
