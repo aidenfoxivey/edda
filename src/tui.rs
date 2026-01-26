@@ -10,7 +10,7 @@ use ratatui::{
 };
 use tokio::{sync::mpsc, time::Instant};
 
-use crate::types::{AppState, Focus, MeshEvent};
+use crate::types::{Focus, MeshEvent};
 
 use ratatui::{
     crossterm::event::{self, Event, KeyCode},
@@ -21,14 +21,12 @@ use ratatui::{
 pub struct App {
     pub receiver: mpsc::Receiver<MeshEvent>,
     pub vertical_scroll_state: ScrollbarState,
-    pub horizontal_scroll_state: ScrollbarState,
     pub nodes: HashMap<u32, NodeInfo>,
     pub input: String,
+    pub search: String,
     pub focus: Option<Focus>,
     pub node_list_state: ListState,
     pub current_contact: Option<NodeInfo>,
-    pub state: AppState,
-    // pub current_conversation: Vec<Message>,
 }
 
 impl App {
@@ -36,13 +34,12 @@ impl App {
         Self {
             receiver,
             vertical_scroll_state: ScrollbarState::default(),
-            horizontal_scroll_state: ScrollbarState::default(),
             nodes: HashMap::new(),
             input: String::new(),
+            search: String::new(),
             focus: None,
             node_list_state: ListState::default(),
             current_contact: None,
-            state: AppState::Loading,
         }
     }
 
@@ -59,9 +56,7 @@ impl App {
             if is_empty {
                 self.node_list_state.select(Some(0));
             }
-            self.state = AppState::Loaded;
         }
-        self.state = AppState::Loaded;
     }
 
     pub fn run(&mut self, terminal: &mut DefaultTerminal) -> Result<()> {
@@ -76,87 +71,87 @@ impl App {
             if event::poll(timeout)?
                 && let Event::Key(key) = event::read()?
             {
-                if self.state == AppState::Loading {
-                    if let KeyCode::Char('q') = key.code {
-                        return Ok(());
+                match key.code {
+                    KeyCode::Esc => {
+                        self.focus = None;
                     }
-                } else {
-                    match key.code {
-                        KeyCode::Esc => {
-                            self.focus = None;
-                        }
-                        KeyCode::Tab => {
-                            self.focus = match self.focus {
-                                None => Some(Focus::NodeList),
-                                Some(Focus::NodeList) => Some(Focus::Conversation),
-                                Some(Focus::Conversation) => Some(Focus::Input),
-                                Some(Focus::Input) => Some(Focus::NodeList),
-                            };
-                        }
-                        KeyCode::BackTab => {
-                            self.focus = match self.focus {
-                                None => Some(Focus::NodeList),
-                                Some(Focus::NodeList) => Some(Focus::Input),
-                                Some(Focus::Input) => Some(Focus::Conversation),
-                                Some(Focus::Conversation) => Some(Focus::NodeList),
-                            };
-                        }
-                        _ => {
-                            if let Some(focus) = self.focus {
-                                match focus {
-                                    Focus::NodeList => match key.code {
-                                        KeyCode::Char('j') | KeyCode::Down => {
-                                            self.node_list_state.select_next()
-                                        }
-                                        KeyCode::Char('k') | KeyCode::Up => {
-                                            self.node_list_state.select_previous()
-                                        }
-                                        KeyCode::Enter => {
-                                            if let Some(selected_index) =
-                                                self.node_list_state.selected()
-                                            {
-                                                let nodes = self.get_sorted_nodes();
-                                                if let Some(selected_node) =
-                                                    nodes.get(selected_index)
-                                                {
-                                                    self.current_contact =
-                                                        Some((*selected_node).clone());
-                                                }
+                    KeyCode::Tab => {
+                        self.focus = match self.focus {
+                            None => Some(Focus::Search),
+                            Some(Focus::Search) => Some(Focus::Input),
+                            Some(Focus::Input) => Some(Focus::Conversation),
+                            Some(Focus::Conversation) => Some(Focus::NodeList),
+                            Some(Focus::NodeList) => Some(Focus::Search),
+                        };
+                    }
+                    KeyCode::BackTab => {
+                        self.focus = match self.focus {
+                            None => Some(Focus::Search),
+                            Some(Focus::Search) => Some(Focus::NodeList),
+                            Some(Focus::NodeList) => Some(Focus::Conversation),
+                            Some(Focus::Conversation) => Some(Focus::Input),
+                            Some(Focus::Input) => Some(Focus::Search),
+                        };
+                    }
+                    _ => {
+                        if let Some(focus) = self.focus {
+                            match focus {
+                                Focus::NodeList => match key.code {
+                                    KeyCode::Char('j') | KeyCode::Down => {
+                                        self.node_list_state.select_next()
+                                    }
+                                    KeyCode::Char('k') | KeyCode::Up => {
+                                        self.node_list_state.select_previous()
+                                    }
+                                    KeyCode::Enter => {
+                                        if let Some(selected_index) =
+                                            self.node_list_state.selected()
+                                        {
+                                            let nodes = self.get_sorted_nodes();
+                                            if let Some(selected_node) = nodes.get(selected_index) {
+                                                self.current_contact =
+                                                    Some((*selected_node).clone());
                                             }
                                         }
-                                        _ => {}
-                                    },
-                                    Focus::Conversation => match key.code {
-                                        KeyCode::Char('j') | KeyCode::Down => {
-                                            self.vertical_scroll_state.next();
-                                        }
-                                        KeyCode::Char('k') | KeyCode::Up => {
-                                            self.vertical_scroll_state.prev();
-                                        }
-                                        KeyCode::Char('h') | KeyCode::Left => {
-                                            self.horizontal_scroll_state.prev();
-                                        }
-                                        KeyCode::Char('l') | KeyCode::Right => {
-                                            self.horizontal_scroll_state.next()
-                                        }
-                                        _ => {}
-                                    },
-                                    Focus::Input => match key.code {
-                                        KeyCode::Char(c) => {
-                                            self.input.push(c);
-                                        }
-                                        KeyCode::Backspace => {
-                                            self.input.pop();
-                                        }
-                                        KeyCode::Enter => {
-                                            self.input.push('\n');
-                                        }
-                                        _ => {}
-                                    },
-                                }
-                            } else if let KeyCode::Char('q') = key.code {
-                                return Ok(());
+                                    }
+                                    _ => {}
+                                },
+                                Focus::Conversation => match key.code {
+                                    KeyCode::Char('j') | KeyCode::Down => {
+                                        self.vertical_scroll_state.next();
+                                    }
+                                    KeyCode::Char('k') | KeyCode::Up => {
+                                        self.vertical_scroll_state.prev();
+                                    }
+                                    _ => {}
+                                },
+                                Focus::Input => match key.code {
+                                    KeyCode::Char(c) => {
+                                        self.input.push(c);
+                                    }
+                                    KeyCode::Backspace => {
+                                        self.input.pop();
+                                    }
+                                    KeyCode::Enter => {
+                                        self.input.push('\n');
+                                    }
+                                    _ => {}
+                                },
+                                Focus::Search => match key.code {
+                                    KeyCode::Char(c) => {
+                                        self.search.push(c);
+                                    }
+                                    KeyCode::Backspace => {
+                                        self.search.pop();
+                                    }
+                                    KeyCode::Enter => {
+                                        self.search.push('\n');
+                                    }
+                                    _ => {}
+                                },
                             }
+                        } else if let KeyCode::Char('q') = key.code {
+                            return Ok(());
                         }
                     }
                 }
@@ -167,36 +162,62 @@ impl App {
         }
     }
 
-    fn draw(&mut self, frame: &mut Frame) {
-        if self.state == AppState::Loading {
-            self.draw_loading(frame);
-            return;
-        }
-
+    fn build_constraints(frame: &mut Frame) -> (Rect, Rect, Rect, Rect, Rect) {
         let area = frame.area();
-
-        let s =
-            "Veeeeeeeeeeeeeeeery    loooooooooooooooooong   striiiiiiiiiiiiiiiiiiiiiiiiiing.   ";
-        let mut long_line = s.repeat(usize::from(area.width) / s.len() + 4);
-        long_line.push('\n');
 
         let horizontal_chunks =
             Layout::horizontal([Constraint::Percentage(30), Constraint::Percentage(70)])
                 .split(area);
 
-        let chunks = Layout::vertical([
+        let left_side = Layout::vertical([Constraint::Min(4), Constraint::Percentage(100)])
+            .split(horizontal_chunks[0]);
+
+        let right_side = Layout::vertical([
             Constraint::Min(1),
             Constraint::Percentage(10),
             Constraint::Percentage(90),
         ])
         .split(horizontal_chunks[1]);
 
+        (
+            left_side[0],
+            left_side[1],
+            right_side[0],
+            right_side[1],
+            right_side[2],
+        )
+    }
+
+    fn draw(&mut self, frame: &mut Frame) {
+        let (search_rect, node_list_rect, title_rect, input_rect, conversation_rect) =
+            Self::build_constraints(frame);
+
+        self.draw_title(frame, title_rect);
+        self.draw_conversation(frame, conversation_rect, input_rect);
+        self.draw_node_list(frame, node_list_rect);
+        self.draw_input_box(frame, input_rect);
+        self.draw_search_box(frame, search_rect);
+        self.set_cursor_position(frame, input_rect);
+    }
+
+    fn draw_title(&self, frame: &mut Frame, rect: Rect) {
+        let title = Block::new()
+            .title_alignment(Alignment::Center)
+            .title("MESHCOM 0.0.1".bold());
+        frame.render_widget(title, rect);
+    }
+
+    fn draw_conversation(
+        &mut self,
+        frame: &mut Frame,
+        conversation_rect: Rect,
+        scrollbar_rect: Rect,
+    ) {
         let text = vec![
             Line::from("This is a line "),
             Line::from("This is a line   ".red()),
             Line::from("This is a line".on_dark_gray()),
             Line::from("This is a longer line".crossed_out()),
-            Line::from(long_line.clone()),
             Line::from("This is a line".reset()),
             Line::from(vec![
                 "Masked text: ".into(),
@@ -204,12 +225,6 @@ impl App {
             ]),
         ];
         self.vertical_scroll_state = self.vertical_scroll_state.content_length(text.len());
-        self.horizontal_scroll_state = self.horizontal_scroll_state.content_length(long_line.len());
-
-        let title = Block::new()
-            .title_alignment(Alignment::Center)
-            .title("MESHCOM 0.0.1".bold());
-        frame.render_widget(title, chunks[0]);
 
         let title = if let Some(contact) = &self.current_contact {
             format!("CONNECTED: {}", contact.user.as_ref().unwrap().long_name)
@@ -227,15 +242,17 @@ impl App {
                     Style::default()
                 }),
         );
-        frame.render_widget(paragraph, chunks[2]);
+        frame.render_widget(paragraph, conversation_rect);
         frame.render_stateful_widget(
             Scrollbar::new(ScrollbarOrientation::VerticalRight)
                 .begin_symbol(Some("#"))
                 .end_symbol(Some("#")),
-            chunks[1],
+            scrollbar_rect,
             &mut self.vertical_scroll_state,
         );
+    }
 
+    fn draw_node_list(&mut self, frame: &mut Frame, rect: Rect) {
         let nodes_list_block = Block::bordered()
             .gray()
             .title("NODE LIST".bold())
@@ -266,13 +283,29 @@ impl App {
             })
             .collect();
 
+        // Filter based on what's in search.
+        let items: Vec<_> = if self.search.is_empty() {
+            items
+        } else {
+            items
+                .into_iter()
+                .filter(|line| {
+                    line.to_string()
+                        .to_lowercase()
+                        .contains(&self.search.to_lowercase())
+                })
+                .collect()
+        };
+
         let list = List::new(items)
             .block(nodes_list_block)
             .highlight_symbol("> ")
             .highlight_style(Style::default().bg(Color::DarkGray));
 
-        frame.render_stateful_widget(list, horizontal_chunks[0], &mut self.node_list_state);
+        frame.render_stateful_widget(list, rect, &mut self.node_list_state);
+    }
 
+    fn draw_input_box(&self, frame: &mut Frame, rect: Rect) {
         let input_box = Paragraph::new(self.input.as_str())
             .block(Block::bordered().title("INPUT".bold()).border_style(
                 if self.focus == Some(Focus::Input) {
@@ -282,13 +315,28 @@ impl App {
                 },
             ))
             .wrap(Wrap { trim: false });
-        frame.render_widget(input_box, chunks[1]);
+        frame.render_widget(input_box, rect);
+    }
 
+    fn draw_search_box(&self, frame: &mut Frame, rect: Rect) {
+        let search_box = Paragraph::new(self.search.as_str())
+            .block(Block::bordered().title("SEARCH".bold()).border_style(
+                if self.focus == Some(Focus::Search) {
+                    Style::default().fg(Color::Yellow)
+                } else {
+                    Style::default()
+                },
+            ))
+            .wrap(Wrap { trim: false });
+        frame.render_widget(search_box, rect);
+    }
+
+    fn set_cursor_position(&self, frame: &mut Frame, input_rect: Rect) {
         if self.focus == Some(Focus::Input) {
-            let input_width = chunks[1].width.saturating_sub(2); // Subtract 2 for borders
+            let input_width = input_rect.width.saturating_sub(2); // Subtract 2 for borders
             let line_count = (self.input.len() as u16 / input_width) + 1;
-            let cursor_x = chunks[1].x + (self.input.len() as u16 % input_width) + 1;
-            let cursor_y = chunks[1].y + line_count;
+            let cursor_x = input_rect.x + (self.input.len() as u16 % input_width) + 1;
+            let cursor_y = input_rect.y + line_count;
             frame.set_cursor_position((cursor_x, cursor_y));
         }
     }
