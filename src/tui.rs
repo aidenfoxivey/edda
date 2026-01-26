@@ -107,8 +107,29 @@ impl App {
                                         if let Some(selected_index) =
                                             self.node_list_state.selected()
                                         {
-                                            let nodes = self.get_sorted_nodes();
-                                            if let Some(selected_node) = nodes.get(selected_index) {
+                                            let sorted_nodes = self.get_sorted_nodes();
+                                            let filtered_nodes: Vec<_> = if self.search.is_empty() {
+                                                sorted_nodes
+                                            } else {
+                                                sorted_nodes
+                                                    .into_iter()
+                                                    .filter(|nodeinfo| {
+                                                        let long_name = if let Some(user) =
+                                                            nodeinfo.user.as_ref()
+                                                        {
+                                                            user.long_name.clone()
+                                                        } else {
+                                                            String::from("UNK")
+                                                        };
+                                                        long_name
+                                                            .to_lowercase()
+                                                            .contains(&self.search.to_lowercase())
+                                                    })
+                                                    .collect()
+                                            };
+                                            if let Some(selected_node) =
+                                                filtered_nodes.get(selected_index)
+                                            {
                                                 self.current_contact =
                                                     Some((*selected_node).clone());
                                             }
@@ -140,9 +161,11 @@ impl App {
                                 Focus::Search => match key.code {
                                     KeyCode::Char(c) => {
                                         self.search.push(c);
+                                        self.reset_node_list_index();
                                     }
                                     KeyCode::Backspace => {
                                         self.search.pop();
+                                        self.reset_node_list_index();
                                     }
                                     KeyCode::Enter => {
                                         self.search.push('\n');
@@ -160,6 +183,10 @@ impl App {
                 last_tick = Instant::now();
             }
         }
+    }
+
+    fn reset_node_list_index(&mut self) {
+        self.node_list_state.select(Some(0));
     }
 
     fn build_constraints(frame: &mut Frame) -> (Rect, Rect, Rect, Rect, Rect) {
