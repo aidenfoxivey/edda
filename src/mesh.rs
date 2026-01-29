@@ -3,7 +3,9 @@
 use std::env;
 
 use meshtastic::api::StreamApi;
-use meshtastic::utils;
+use meshtastic::types::EncodedMeshPacketData;
+use meshtastic::packet::PacketDestination::Node;
+use meshtastic::{protobufs::PortNum::TextMessageApp, utils};
 use tokio::sync::mpsc;
 
 use crate::router::Router;
@@ -24,7 +26,7 @@ pub async fn run_meshtastic(
     let (mut pkt_receiver, stream_api) = stream_api.connect(serial_stream).await;
 
     let config_id = utils::generate_rand_id();
-    let _stream_api = stream_api.configure(config_id).await?;
+    let mut stream_api = stream_api.configure(config_id).await?;
 
     let mut router = Router::new(tx);
 
@@ -34,7 +36,22 @@ pub async fn run_meshtastic(
                 router.handle_packet_from_radio(packet);
             }
             Some(ui_event) = rx.recv() => {
-                router.handle_ui_event(ui_event);
+                match ui_event {
+                    UiEvent::Message { node_id, message } => {
+                        let encoded = EncodedMeshPacketData::new(message.bytes().collect());
+                        stream_api.send_mesh_packet(
+                            &mut router,
+                            encoded,
+                            TextMessageApp,
+                            Node(node_id),
+                            0.into(), // Channel
+                            false, // Want acknowledged
+                            false, // Want response
+                            false, // Echo response
+                            None, // Reply ID
+                            None).await?; // emoji
+                    }
+                }
             }
             else => {
                 break;

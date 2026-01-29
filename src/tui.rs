@@ -3,14 +3,17 @@
 use std::{collections::HashMap, time::Duration};
 
 use color_eyre::eyre::Result;
-use meshtastic::protobufs::NodeInfo;
+use meshtastic::{protobufs::NodeInfo, types::NodeId};
 use ratatui::{
     DefaultTerminal,
     widgets::{ListState, ScrollbarState},
 };
-use tokio::{sync::mpsc, time::Instant};
+use tokio::{
+    sync::mpsc::{self},
+    time::Instant,
+};
 
-use crate::types::{Focus, MeshEvent};
+use crate::types::{Focus, MeshEvent, UiEvent};
 
 use ratatui::{
     crossterm::event::{self, Event, KeyCode},
@@ -19,6 +22,7 @@ use ratatui::{
 };
 
 pub struct App {
+    pub transmitter: mpsc::Sender<UiEvent>,
     pub receiver: mpsc::Receiver<MeshEvent>,
     pub vertical_scroll_state: ScrollbarState,
     pub nodes: HashMap<u32, NodeInfo>,
@@ -27,11 +31,13 @@ pub struct App {
     pub focus: Option<Focus>,
     pub node_list_state: ListState,
     pub current_contact: Option<NodeInfo>,
+    pub current_conversation: Vec<String>,
 }
 
 impl App {
-    pub fn new(receiver: mpsc::Receiver<MeshEvent>) -> Self {
+    pub fn new(transmitter: mpsc::Sender<UiEvent>, receiver: mpsc::Receiver<MeshEvent>) -> Self {
         Self {
+            transmitter,
             receiver,
             vertical_scroll_state: ScrollbarState::default(),
             nodes: HashMap::new(),
@@ -40,6 +46,7 @@ impl App {
             focus: None,
             node_list_state: ListState::default(),
             current_contact: None,
+            current_conversation: Vec::new(),
         }
     }
 
@@ -50,12 +57,20 @@ impl App {
     }
 
     fn update(&mut self) {
-        if let Ok(MeshEvent::NodeAvailable(node_info)) = self.receiver.try_recv() {
-            let is_empty = self.nodes.is_empty();
-            self.nodes.insert(node_info.num, *node_info);
-            if is_empty {
-                self.node_list_state.select(Some(0));
+        match self.receiver.try_recv() {
+            Ok(MeshEvent::NodeAvailable(node_info)) => {
+                let is_empty = self.nodes.is_empty();
+                self.nodes.insert(node_info.num, *node_info);
+                if is_empty {
+                    self.node_list_state.select(Some(0));
+                }
             }
+            Ok(MeshEvent::Message { node_id, message }) => {
+                if Some(NodeId::from(self.current_contact.clone().unwrap().num)) == Some(node_id) {
+                    self.current_conversation.push(message);
+                }
+            }
+            Err(_) => {}
         }
     }
 
@@ -109,8 +124,12 @@ impl App {
                                         {
                                             let nodes = self.get_sorted_nodes();
                                             if let Some(selected_node) = nodes.get(selected_index) {
-                                                self.current_contact =
-                                                    Some((*selected_node).clone());
+                                                let new_node = Some((*selected_node).clone());
+                                                if new_node != self.current_contact {
+                                                    // TODO(reggens): add db lookup here
+                                                    self.current_conversation = vec![];
+                                                    self.current_contact = new_node;
+                                                }
                                             }
                                         }
                                     }
@@ -127,13 +146,28 @@ impl App {
                                 },
                                 Focus::Input => match key.code {
                                     KeyCode::Char(c) => {
-                                        self.input.push(c);
+                                        // Arbitrary limit of 237 characters
+                                        if self.input.len() <= 237 {
+                                            self.input.push(c);
+                                        }
                                     }
                                     KeyCode::Backspace => {
                                         self.input.pop();
                                     }
                                     KeyCode::Enter => {
-                                        self.input.push('\n');
+                                        if let Some(ref id) = self.current_contact {
+                                            self.current_conversation.push(self.input.clone());
+
+                                            let node_id = NodeId::new(id.num);
+                                            let msg = UiEvent::Message {
+                                                node_id,
+                                                message: self.input.clone(),
+                                            };
+
+                                            log::info!("Sending packet to {}", node_id);
+                                            self.input.clear();
+                                            self.transmitter.try_send(msg).unwrap();
+                                        }
                                     }
                                     _ => {}
                                 },
@@ -213,18 +247,9 @@ impl App {
         conversation_rect: Rect,
         scrollbar_rect: Rect,
     ) {
-        let text = vec![
-            Line::from("This is a line "),
-            Line::from("This is a line   ".red()),
-            Line::from("This is a line".on_dark_gray()),
-            Line::from("This is a longer line".crossed_out()),
-            Line::from("This is a line".reset()),
-            Line::from(vec![
-                "Masked text: ".into(),
-                Span::styled(Masked::new("password", '*'), Style::new().fg(Color::Red)),
-            ]),
-        ];
-        self.vertical_scroll_state = self.vertical_scroll_state.content_length(text.len());
+        self.vertical_scroll_state = self
+            .vertical_scroll_state
+            .content_length(self.current_conversation.len());
 
         let title = if let Some(contact) = &self.current_contact {
             format!("CONNECTED: {}", contact.user.as_ref().unwrap().long_name)
@@ -232,7 +257,13 @@ impl App {
             "NO NODE CONNECTED".to_string()
         };
 
-        let paragraph = Paragraph::new(text.clone()).gray().block(
+        let text: Vec<Line> = self
+            .current_conversation
+            .iter()
+            .map(|x| Line::from(x.as_ref()))
+            .collect();
+
+        let paragraph = Paragraph::new(text).gray().block(
             Block::bordered()
                 .gray()
                 .title(title.as_str().bold())
