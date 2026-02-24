@@ -15,6 +15,8 @@ pub enum MeshEvent {
     Message { node_id: NodeId, message: String },
 }
 
+pub type NodeNum = u32;
+
 #[derive(Debug)]
 pub struct Message {
     to: NodeId,

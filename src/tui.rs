@@ -13,7 +13,7 @@ use tokio::{
     time::Instant,
 };
 
-use crate::types::{Focus, MeshEvent, UiEvent};
+use crate::types::{Focus, MeshEvent, NodeNum, UiEvent};
 
 use ratatui::{
     crossterm::event::{self, Event, KeyCode},
@@ -25,13 +25,13 @@ pub struct App {
     pub transmitter: mpsc::Sender<UiEvent>,
     pub receiver: mpsc::Receiver<MeshEvent>,
     pub vertical_scroll_state: ScrollbarState,
-    pub nodes: HashMap<u32, NodeInfo>,
+    pub nodes: HashMap<NodeNum, NodeInfo>,
     pub input: String,
     pub search: String,
     pub focus: Option<Focus>,
     pub node_list_state: ListState,
-    pub current_contact: Option<NodeInfo>,
-    pub current_conversation: Vec<String>,
+    pub current_contact: Option<NodeNum>,
+    pub conversations: HashMap<NodeNum, Vec<String>>,
 }
 
 impl App {
@@ -46,7 +46,7 @@ impl App {
             focus: None,
             node_list_state: ListState::default(),
             current_contact: None,
-            current_conversation: Vec::new(),
+            conversations: HashMap::new(),
         }
     }
 
@@ -66,9 +66,10 @@ impl App {
                 }
             }
             Ok(MeshEvent::Message { node_id, message }) => {
-                if Some(NodeId::from(self.current_contact.clone().unwrap().num)) == Some(node_id) {
-                    self.current_conversation.push(message);
-                }
+                self.conversations
+                    .entry(node_id.id())
+                    .or_default()
+                    .push(message);
             }
             Err(_) => {}
         }
@@ -124,10 +125,9 @@ impl App {
                                         {
                                             let nodes = self.get_sorted_nodes();
                                             if let Some(selected_node) = nodes.get(selected_index) {
-                                                let new_node = Some((*selected_node).clone());
+                                                let new_node = Some(selected_node.num);
                                                 if new_node != self.current_contact {
                                                     // TODO(reggens): add db lookup here
-                                                    self.current_conversation = vec![];
                                                     self.current_contact = new_node;
                                                 }
                                             }
@@ -155,10 +155,13 @@ impl App {
                                         self.input.pop();
                                     }
                                     KeyCode::Enter => {
-                                        if let Some(ref id) = self.current_contact {
-                                            self.current_conversation.push(self.input.clone());
+                                        if let Some(id) = self.current_contact {
+                                            self.conversations
+                                                .entry(id)
+                                                .or_default()
+                                                .push(self.input.clone());
 
-                                            let node_id = NodeId::new(id.num);
+                                            let node_id = NodeId::new(id);
                                             let msg = UiEvent::Message {
                                                 node_id,
                                                 message: self.input.clone(),
@@ -247,21 +250,32 @@ impl App {
         conversation_rect: Rect,
         scrollbar_rect: Rect,
     ) {
+        let current_num = self.current_contact;
+
+        let content_len = current_num
+            .and_then(|num| self.conversations.get(&num))
+            .map(|v| v.len())
+            .unwrap_or(0);
         self.vertical_scroll_state = self
             .vertical_scroll_state
-            .content_length(self.current_conversation.len());
+            .content_length(content_len);
 
-        let title = if let Some(contact) = &self.current_contact {
-            format!("CONNECTED: {}", contact.user.as_ref().unwrap().long_name)
+        let title = if let Some(num) = current_num {
+            let long_name = self
+                .nodes
+                .get(&num)
+                .and_then(|n| n.user.as_ref())
+                .map(|u| u.long_name.as_str())
+                .unwrap_or("UNKNOWN");
+            format!("CONNECTED: {}", long_name)
         } else {
             "NO NODE CONNECTED".to_string()
         };
 
-        let text: Vec<Line> = self
-            .current_conversation
-            .iter()
-            .map(|x| Line::from(x.as_ref()))
-            .collect();
+        let text: Vec<Line> = current_num
+            .and_then(|num| self.conversations.get(&num))
+            .map(|msgs| msgs.iter().map(|x| Line::from(x.as_str())).collect())
+            .unwrap_or_default();
 
         let paragraph = Paragraph::new(text).gray().block(
             Block::bordered()
@@ -303,7 +317,7 @@ impl App {
                     String::from("UNK")
                 };
                 let mut line = Line::from(long_name);
-                if self.current_contact == Some((*nodeinfo).clone()) {
+                if self.current_contact == Some(nodeinfo.num) {
                     line = line.patch_style(
                         Style::default()
                             .add_modifier(Modifier::BOLD)
