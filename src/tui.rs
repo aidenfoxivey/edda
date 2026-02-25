@@ -2,6 +2,7 @@
 
 use std::{collections::HashMap, time::Duration};
 
+use chrono::{DateTime, Local};
 use color_eyre::eyre::Result;
 use meshtastic::{protobufs::NodeInfo, types::NodeId};
 use ratatui::{
@@ -31,7 +32,7 @@ pub struct App {
     pub focus: Option<Focus>,
     pub node_list_state: ListState,
     pub current_contact: Option<NodeNum>,
-    pub conversations: HashMap<NodeNum, Vec<String>>,
+    pub conversations: HashMap<NodeNum, Vec<(bool, DateTime<Local>, String)>>,
 }
 
 impl App {
@@ -66,10 +67,11 @@ impl App {
                 }
             }
             Ok(MeshEvent::Message { node_id, message }) => {
-                self.conversations
-                    .entry(node_id.id())
-                    .or_default()
-                    .push(message);
+                self.conversations.entry(node_id.id()).or_default().push((
+                    false,
+                    Local::now(),
+                    message,
+                ));
             }
             Err(_) => {}
         }
@@ -156,10 +158,11 @@ impl App {
                                     }
                                     KeyCode::Enter => {
                                         if let Some(id) = self.current_contact {
-                                            self.conversations
-                                                .entry(id)
-                                                .or_default()
-                                                .push(self.input.clone());
+                                            self.conversations.entry(id).or_default().push((
+                                                true,
+                                                Local::now(),
+                                                self.input.clone(),
+                                            ));
 
                                             let node_id = NodeId::new(id);
                                             let msg = UiEvent::Message {
@@ -256,9 +259,7 @@ impl App {
             .and_then(|num| self.conversations.get(&num))
             .map(|v| v.len())
             .unwrap_or(0);
-        self.vertical_scroll_state = self
-            .vertical_scroll_state
-            .content_length(content_len);
+        self.vertical_scroll_state = self.vertical_scroll_state.content_length(content_len);
 
         let title = if let Some(num) = current_num {
             let long_name = self
@@ -274,7 +275,18 @@ impl App {
 
         let text: Vec<Line> = current_num
             .and_then(|num| self.conversations.get(&num))
-            .map(|msgs| msgs.iter().map(|x| Line::from(x.as_str())).collect())
+            .map(|msgs| {
+                msgs.iter()
+                    .map(|x| {
+                        let mut spans = Vec::new();
+                        spans.push(Span::raw(x.1.format("%H:%M:%S").to_string()));
+                        let colour = if x.0 { Color::Yellow } else { Color::Blue };
+                        spans.push(Span::styled("> ", Style::default().fg(colour)));
+                        spans.push(Span::raw(&x.2));
+                        Line::from(spans)
+                    })
+                    .collect()
+            })
             .unwrap_or_default();
 
         let paragraph = Paragraph::new(text).gray().block(
@@ -310,12 +322,9 @@ impl App {
         let sorted_nodes = self.get_sorted_nodes();
         let items: Vec<_> = sorted_nodes
             .iter()
-            .map(|nodeinfo| {
-                let long_name = if let Some(user) = nodeinfo.user.as_ref() {
-                    user.long_name.clone()
-                } else {
-                    String::from("UNK")
-                };
+            .filter_map(|nodeinfo| {
+                let user = nodeinfo.user.as_ref()?;
+                let long_name = user.long_name.clone();
                 let mut line = Line::from(long_name);
                 if self.current_contact == Some(nodeinfo.num) {
                     line = line.patch_style(
@@ -324,7 +333,7 @@ impl App {
                             .fg(Color::Cyan),
                     );
                 }
-                line
+                Some(line)
             })
             .collect();
 

@@ -1,9 +1,8 @@
 //! A `Router` acts as middleware that can do work whenever a given message is sent or received.
 
-use meshtastic::Message;
 use meshtastic::errors::Error;
 use meshtastic::packet::PacketRouter;
-use meshtastic::protobufs::{FromRadio, MeshPacket, User, from_radio::PayloadVariant};
+use meshtastic::protobufs::{FromRadio, MeshPacket, PortNum, User, from_radio::PayloadVariant, mesh_packet};
 use meshtastic::types::NodeId;
 use tokio::sync::mpsc::Sender;
 
@@ -31,18 +30,25 @@ impl Router {
             Some(variant) => {
                 match variant {
                     PayloadVariant::Packet(packet) => {
-                        if let Some(node_num) = self.node_num
-                            && node_num == packet.to {
-                                log::info!("Received packet for self");
-                                let v = packet.encode_to_vec();
-                                let msg = String::from_utf8_lossy(&v);
-                                self.ui_channel
-                                    .try_send(MeshEvent::Message {
-                                        node_id: NodeId::from(packet.from),
-                                        message: msg.to_string(),
-                                    })
-                                    .unwrap();
+                        let is_for_me = self.node_num
+                            .map(|n| n == packet.to || packet.to == 0xFFFFFFFF)
+                            .unwrap_or(false);
+
+                        if is_for_me {
+                            if let Some(mesh_packet::PayloadVariant::Decoded(data)) = &packet.payload_variant {
+                                if data.portnum == PortNum::TextMessageApp as i32 {
+                                    if let Ok(msg) = String::from_utf8(data.payload.clone()) {
+                                        log::info!("Received text message from {}", packet.from);
+                                        if let Err(e) = self.ui_channel.try_send(MeshEvent::Message {
+                                            node_id: NodeId::from(packet.from),
+                                            message: msg,
+                                        }) {
+                                            log::error!("Failed to send Message event: {}", e);
+                                        }
+                                    }
+                                }
                             }
+                        }
                     }
                     PayloadVariant::MyInfo(info) => {
                         // TODO(aidenfoxivey): I don't know that this case can happen, but want to be sure.
