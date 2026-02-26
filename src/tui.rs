@@ -197,8 +197,10 @@ impl App {
                                 },
                                 Focus::Search => match key.code {
                                     KeyCode::Char(c) => {
+                                        if c != ' ' {
                                         self.search.push(c);
                                     }
+}
                                     KeyCode::Backspace => {
                                         self.search.pop();
                                     }
