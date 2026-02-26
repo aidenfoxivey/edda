@@ -2,7 +2,9 @@
 
 use meshtastic::errors::Error;
 use meshtastic::packet::PacketRouter;
-use meshtastic::protobufs::{FromRadio, MeshPacket, PortNum, User, from_radio::PayloadVariant, mesh_packet};
+use meshtastic::protobufs::{
+    FromRadio, MeshPacket, PortNum, User, from_radio::PayloadVariant, mesh_packet,
+};
 use meshtastic::types::NodeId;
 use tokio::sync::mpsc::Sender;
 
@@ -30,19 +32,24 @@ impl Router {
             Some(variant) => {
                 match variant {
                     PayloadVariant::Packet(packet) => {
-                        let is_for_me = self.node_num
+                        let is_for_me = self
+                            .node_num
                             .map(|n| n == packet.to || packet.to == 0xFFFFFFFF)
                             .unwrap_or(false);
 
                         if is_for_me {
-                            if let Some(mesh_packet::PayloadVariant::Decoded(data)) = &packet.payload_variant {
+                            if let Some(mesh_packet::PayloadVariant::Decoded(data)) =
+                                &packet.payload_variant
+                            {
                                 if data.portnum == PortNum::TextMessageApp as i32 {
                                     if let Ok(msg) = String::from_utf8(data.payload.clone()) {
                                         log::info!("Received text message from {}", packet.from);
-                                        if let Err(e) = self.ui_channel.try_send(MeshEvent::Message {
-                                            node_id: NodeId::from(packet.from),
-                                            message: msg,
-                                        }) {
+                                        if let Err(e) =
+                                            self.ui_channel.try_send(MeshEvent::Message {
+                                                node_id: NodeId::from(packet.from),
+                                                message: msg,
+                                            })
+                                        {
                                             log::error!("Failed to send Message event: {}", e);
                                         }
                                     }
@@ -64,13 +71,13 @@ impl Router {
                         {
                             log::info!("Receiving current node user information");
                             self.user = info.user.clone();
-                        }
-
-                        if let Err(e) = self
-                            .ui_channel
-                            .try_send(MeshEvent::NodeAvailable(Box::new(info.clone())))
-                        {
-                            log::error!("Failed to send NodeAvailable event: {}", e);
+                        } else {
+                            if let Err(e) = self
+                                .ui_channel
+                                .try_send(MeshEvent::NodeAvailable(Box::new(info.clone())))
+                            {
+                                log::error!("Failed to send NodeAvailable event: {}", e);
+                            }
                         }
                     }
                     PayloadVariant::Config(_) => {}
