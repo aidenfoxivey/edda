@@ -7,24 +7,24 @@ use color_eyre::eyre::Result;
 use meshtastic::{protobufs::NodeInfo, types::NodeId};
 use ratatui::{
     DefaultTerminal,
-    widgets::{ListState, ScrollbarState},
+    crossterm::event::{self, Event, KeyCode},
+    prelude::*,
+    widgets::{
+        Block, List, ListState, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Wrap,
+    },
 };
 use tokio::{
-    sync::mpsc::{self},
+    sync::mpsc::{Receiver, Sender},
     time::Instant,
 };
 
 use crate::types::{Focus, MeshEvent, NodeNum, UiEvent};
 
-use ratatui::{
-    crossterm::event::{self, Event, KeyCode},
-    prelude::*,
-    widgets::{Block, List, Paragraph, Scrollbar, ScrollbarOrientation, Wrap},
-};
+const PACKET_BYTE_LIMIT: usize = 200;
 
 pub struct App {
-    pub transmitter: mpsc::Sender<UiEvent>,
-    pub receiver: mpsc::Receiver<MeshEvent>,
+    pub transmitter: Sender<UiEvent>,
+    pub receiver: Receiver<MeshEvent>,
     pub vertical_scroll_state: ScrollbarState,
     pub nodes: HashMap<NodeNum, NodeInfo>,
     pub input: String,
@@ -36,13 +36,13 @@ pub struct App {
 }
 
 impl App {
-    pub fn new(transmitter: mpsc::Sender<UiEvent>, receiver: mpsc::Receiver<MeshEvent>) -> Self {
+    pub fn new(transmitter: Sender<UiEvent>, receiver: Receiver<MeshEvent>) -> Self {
         Self {
             transmitter,
             receiver,
             vertical_scroll_state: ScrollbarState::default(),
             nodes: HashMap::new(),
-            input: String::new(),
+            input: String::with_capacity(PACKET_BYTE_LIMIT),
             search: String::new(),
             focus: None,
             node_list_state: ListState::default(),
@@ -55,6 +55,24 @@ impl App {
         let mut nodes: Vec<_> = self.nodes.values().collect();
         nodes.sort_by_key(|n| n.num);
         nodes
+    }
+
+    fn get_visible_nodes(&self) -> Vec<&NodeInfo> {
+        let sorted = self.get_sorted_nodes();
+        sorted
+            .into_iter()
+            .filter(|n| {
+                let Some(user) = n.user.as_ref() else {
+                    return false;
+                };
+                if self.search.is_empty() {
+                    return true;
+                }
+                user.long_name
+                    .to_lowercase()
+                    .contains(&self.search.to_lowercase())
+            })
+            .collect()
     }
 
     fn update(&mut self) {
@@ -125,7 +143,7 @@ impl App {
                                         if let Some(selected_index) =
                                             self.node_list_state.selected()
                                         {
-                                            let nodes = self.get_sorted_nodes();
+                                            let nodes = self.get_visible_nodes();
                                             if let Some(selected_node) = nodes.get(selected_index) {
                                                 let new_node = Some(selected_node.num);
                                                 if new_node != self.current_contact {
@@ -149,7 +167,7 @@ impl App {
                                 Focus::Input => match key.code {
                                     KeyCode::Char(c) => {
                                         // Arbitrary limit of 237 characters
-                                        if self.input.len() <= 237 {
+                                        if self.input.len() <= PACKET_BYTE_LIMIT {
                                             self.input.push(c);
                                         }
                                     }
@@ -319,8 +337,8 @@ impl App {
                 Style::default()
             });
 
-        let sorted_nodes = self.get_sorted_nodes();
-        let items: Vec<_> = sorted_nodes
+        let visible_nodes = self.get_visible_nodes();
+        let items: Vec<_> = visible_nodes
             .iter()
             .filter_map(|nodeinfo| {
                 let user = nodeinfo.user.as_ref()?;
@@ -336,20 +354,6 @@ impl App {
                 Some(line)
             })
             .collect();
-
-        // Filter based on what's in search.
-        let items: Vec<_> = if self.search.is_empty() {
-            items
-        } else {
-            items
-                .into_iter()
-                .filter(|line| {
-                    line.to_string()
-                        .to_lowercase()
-                        .contains(&self.search.to_lowercase())
-                })
-                .collect()
-        };
 
         let list = List::new(items)
             .block(nodes_list_block)
