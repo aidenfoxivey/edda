@@ -198,9 +198,9 @@ impl App {
                                 Focus::Search => match key.code {
                                     KeyCode::Char(c) => {
                                         if c != ' ' {
-                                        self.search.push(c);
+                                            self.search.push(c);
+                                        }
                                     }
-}
                                     KeyCode::Backspace => {
                                         self.search.pop();
                                     }
@@ -346,6 +346,9 @@ impl App {
                 let user = nodeinfo.user.as_ref()?;
                 let long_name = user.long_name.clone();
                 let mut line = Line::from(long_name);
+                if nodeinfo.hops_away() == 0 {
+                    line = line.patch_style(Style::default().fg(Color::Green));
+                }
                 if self.current_contact == Some(nodeinfo.num) {
                     line = line.patch_style(
                         Style::default()
