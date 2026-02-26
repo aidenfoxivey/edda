@@ -344,7 +344,7 @@ impl App {
             .iter()
             .filter_map(|nodeinfo| {
                 let user = nodeinfo.user.as_ref()?;
-                let long_name = user.long_name.clone();
+                let long_name = user.short_name.clone();
                 let mut line = Line::from(long_name);
                 if nodeinfo.hops_away() == 0 {
                     line = line.patch_style(Style::default().fg(Color::Green));
